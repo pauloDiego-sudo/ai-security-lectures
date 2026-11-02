@@ -1,6 +1,6 @@
-# Sécurité des IA — material de estudo
+# Segurança em IA — material de estudo
 
-Aulas interativas e um QCM de revisão do curso **Sécurité des IA** (ENSICAEN, 2A S8), em React + TypeScript.
+Aulas interativas e um QCM de revisão sobre segurança em IA, em React + TypeScript. Inspirado no curso *Sécurité des IA* da ENSICAEN (2A S8).
 
 | Rota | Conteúdo |
 |---|---|

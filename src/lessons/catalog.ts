@@ -30,7 +30,7 @@ export const MODULES: readonly CourseModule[] = [
     title: 'Ataques de Evasão (Evasion Attacks)',
     lesson: {
       slug: '03-ataques-evasao',
-      docTitle: 'Ataques de Evasao — Security of AI, Chap 3',
+      docTitle: 'Ataques de Evasao — Segurança em IA, Cap. 3',
       load: () => import('./03-ataques-evasao'),
     },
   },

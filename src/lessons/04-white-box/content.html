@@ -20,9 +20,9 @@
 
 <!-- ═══════════ HERO ═══════════ -->
 <header class="hero" id="intro">
-  <div class="hero-eyebrow">Security of AI — Chapitre 4</div>
+  <div class="hero-eyebrow">Segurança em IA — Capítulo 4</div>
   <h1>Ataques de Evasão White-Box</h1>
-  <p class="hero-sub">Material completo cobrindo fundamentos matemáticos, formulações de otimização, FGSM, I-FGSM, DeepFool, Carlini-Wagner e Perturbações Adversariais Universais. Baseado nos slides de Frédéric Jurie, ENSICAEN (Mars 2026).</p>
+  <p class="hero-sub">Material completo cobrindo fundamentos matemáticos, formulações de otimização, FGSM, I-FGSM, DeepFool, Carlini-Wagner e Perturbações Adversariais Universais.</p>
 </header>
 
 <section>
@@ -648,7 +648,7 @@ for k in range(K):
     </tbody>
   </table>
 
-  <h3>Perguntas de revisão (Q&A do prof. Jurie)</h3>
+  <h3>Perguntas de revisão</h3>
 
   <ol class="st st-b">
     <li><strong>Como o FGSM explora a linearidade de modelos de deep learning?</strong> O FGSM usa uma aproximação de Taylor de primeira ordem da loss — essencialmente assume que a loss é localmente linear em torno de x₀. Para modelos de grande capacidade, a linearidade local em regiões de alta dimensão é surpreendentemente boa, porque o gradiente aponta consistentemente na direção que aumenta a loss. A eficácia do FGSM é, na verdade, evidência de que as DNNs são excessivamente lineares em seus espaços de features internos.</li>
@@ -663,7 +663,6 @@ for k in range(K):
 </section>
 
 <footer class="ft">
-  <p>Baseado nos slides de Frédéric Jurie — Security of AI, Chap 4: White-Box Evasion Attacks — ENSICAEN (Mars 2026)</p>
   <p>Referências principais: Goodfellow et al. 2014 · Madry et al. 2018 · Moosavi-Dezfooli et al. 2016/2017 · Carlini & Wagner 2017 · Hayes et al. 2018</p>
 </footer>
 
