@@ -1,0 +1,560 @@
+<div class="toc-progress" id="progress"></div>
+
+<nav class="topnav">
+  <div class="topnav-inner">
+    <a href="./" class="nav-link" data-route="/">← Índice</a>
+    <a href="#intro" class="nav-link active" data-section="intro">Intro</a>
+    <a href="#trans" class="nav-link" data-section="trans">1. Transferibilidade</a>
+    <a href="#query" class="nav-link" data-section="query">2. Query-Based</a>
+    <a href="#papernot" class="nav-link" data-section="papernot">3. Papernot et al.</a>
+    <a href="#sota" class="nav-link" data-section="sota">4. Estado da Arte</a>
+    <a href="#compare" class="nav-link" data-section="compare">Comparacao</a>
+  </div>
+</nav>
+
+<div class="page">
+
+<!-- ════════════════════════════════════════ HERO -->
+<header class="hero" id="intro">
+  <div class="hero-eyebrow">Security of AI — Chapitre 5</div>
+  <h1>Ataques Black-Box de Evasao</h1>
+  <p class="hero-sub">Material completo cobrindo ataques por transferibilidade, ataques baseados em queries (score e decision), o metodo Papernot et al., e o estado da arte moderno. Baseado nos slides de Frederic Jurie, ENSICAEN (Mars 2026).</p>
+</header>
+
+<section>
+  <h3>O que e um ataque black-box?</h3>
+  <p>No cenario black-box, o atacante <strong>nao tem acesso</strong> aos internos do modelo alvo: nenhum gradiente, nenhum parametro, nenhum dado de treino. A unica coisa que ele pode fazer e enviar entradas e observar as saidas — como alguem tentando montar um quebra-cabeca no escuro, so com pistas limitadas.</p>
+
+  <p>A pergunta central e: como criar exemplos adversariais eficazes com tao pouca informacao? Duas estrategias dominam: <strong>transferibilidade</strong> (atacar um modelo substituto e transferir o ataque) e <strong>ataques baseados em queries</strong> (consultar o modelo repetidamente para estimar gradientes).</p>
+
+  <nav class="toc">
+    <div class="toc-title">Sumario</div>
+    <a href="#trans">1. Ataques por Transferibilidade</a>
+    <a href="#trans-factors" class="indent">1.1 Fatores que influenciam a transferencia</a>
+    <a href="#trans-viz" class="indent">1.2 Simulacao interativa</a>
+    <a href="#trans-limits" class="indent">1.3 Limitacoes</a>
+    <a href="#query">2. Ataques baseados em Queries</a>
+    <a href="#score" class="indent">2.1 Score-Based: Diferencas Finitas</a>
+    <a href="#score-viz" class="indent">2.2 Simulacao de estimativa de gradiente</a>
+    <a href="#decision" class="indent">2.3 Decision-Based: Boundary Attack</a>
+    <a href="#decision-viz" class="indent">2.4 Simulacao de Boundary Attack</a>
+    <a href="#papernot">3. Deep Dive: Papernot et al.</a>
+    <a href="#papernot-algo" class="indent">3.1 Algoritmo de treino do substituto</a>
+    <a href="#papernot-viz" class="indent">3.2 Simulacao do ataque Papernot</a>
+    <a href="#papernot-results" class="indent">3.3 Resultados experimentais</a>
+    <a href="#sota">4. Estado da Arte (2026)</a>
+    <a href="#compare">5. Comparacao geral e recomendacoes</a>
+  </nav>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  1. TRANSFER-BASED ATTACKS                                    -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="trans">
+  <span class="sn sn-c">1</span>
+  <h2>Ataques por Transferibilidade: explorando vulnerabilidades compartilhadas</h2>
+
+  <p>A descoberta mais surpreendente da pesquisa em adversarial ML: exemplos adversariais gerados para um modelo frequentemente <strong>enganam outros modelos completamente diferentes</strong>. Isso significa que um atacante pode treinar seu proprio modelo (o "substituto"), gerar ataques white-box contra ele, e depois aplicar esses mesmos ataques contra o modelo alvo — sem nunca ter acessado o alvo diretamente.</p>
+
+  <div class="co co-c">
+    <strong>Analogia:</strong> Imagine que voce quer invadir um cofre trancado num banco. Voce nao tem acesso ao cofre real, mas descobre que ele e do mesmo fabricante que um cofre que voce tem em casa. Voce passa semanas estudando as fraquezas do seu cofre — e descobre que as mesmas fraquezas existem no cofre do banco. A transferibilidade funciona exatamente assim: modelos de ML compartilham "fraquezas estruturais" que vem da forma como aprendem representacoes.
+  </div>
+
+  <h3>O processo em tres passos</h3>
+  <ol class="st st-c">
+    <li><strong>Construir ou obter um modelo substituto</strong> Treine um modelo que imite o alvo. Pode ser local ou remoto. Para classificacao de imagens, qualquer CNN pre-treinada (ResNet, VGG, Inception) ja serve como ponto de partida. Quanto mais similar a arquitetura e os dados de treino ao modelo alvo, melhor a transferencia.</li>
+    <li><strong>Gerar exemplos adversariais (white-box no substituto)</strong> Aplique FGSM, PGD, C&W ou qualquer ataque white-box no substituto. Voce tem acesso completo aos gradientes — entao pode gerar ataques poderosos e refinados.</li>
+    <li><strong>Transferir os ataques para o modelo alvo</strong> Envie os exemplos adversariais ao modelo black-box. Se a transferibilidade funcionar, o modelo alvo tambem sera enganado — sem precisar de nenhuma query.</li>
+  </ol>
+
+  <h3 id="trans-factors">Fatores que influenciam a transferibilidade</h3>
+
+  <h4>Arquitetura do modelo</h4>
+  <p>Modelos com arquiteturas similares tendem a compartilhar vulnerabilidades. Exemplos adversariais gerados para uma CNN (ex: ResNet-50) frequentemente enganam outra CNN (ex: Inception-v3). A transferibilidade pode ser menor entre familias de arquiteturas diferentes — por exemplo, de CNN para Transformer — porque as features internas sao aprendidas de forma diferente.</p>
+
+  <h4>Dados de treinamento</h4>
+  <p>Modelos treinados com dados similares sao mais propensos a compartilhar vulnerabilidades. Se o substituto e o alvo foram treinados em ImageNet, as perturbacoes transferem melhor do que se um foi treinado em CIFAR-10 e outro em ImageNet. Usar dados diversificados no substituto pode aumentar a taxa de transferencia.</p>
+
+  <h4>Forca do ataque</h4>
+  <p>Ataques mais fortes no substituto podem levar a melhor transferibilidade — mas cuidado com o epsilon! Um &epsilon; muito grande gera perturbacoes que "overfittam" ao substituto especifico e perdem generalidade. Na pratica, valores moderados de &epsilon; (0.03-0.1 para imagens normalizadas) transferem melhor.</p>
+
+  <div id="trans-viz"></div>
+  <h3>Simulacao: transferibilidade entre modelos</h3>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-c">Interativo</span><span class="ct">Gerar ataque num substituto e transferir para o alvo</span></div>
+    <div class="sr">
+      <span class="sl">Epsilon (ataque):</span>
+      <input type="range" min="1" max="50" value="10" step="1" id="tr-eps" data-input="updateTransfer">
+      <span class="sv" id="tr-eps-val" style="font-family:var(--mono)">0.10</span>
+    </div>
+    <div class="br">
+      <button class="bt on" data-click="setTrArch" data-arg="same" id="tr-btn-same">Mesma arquitetura</button>
+      <button class="bt" data-click="setTrArch" data-arg="similar" id="tr-btn-similar">Similar (CNN→CNN)</button>
+      <button class="bt" data-click="setTrArch" data-arg="diff" id="tr-btn-diff">Diferente (CNN→ViT)</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:12px 0">
+      <div>
+        <div style="font-size:13px;font-weight:600;text-align:center;margin-bottom:6px">Modelo Substituto (white-box)</div>
+        <canvas id="tr-c-sub" width="300" height="200" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l)"></canvas>
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:600;text-align:center;margin-bottom:6px">Modelo Alvo (black-box)</div>
+        <canvas id="tr-c-tgt" width="300" height="200" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l)"></canvas>
+      </div>
+    </div>
+    <div class="mg c4">
+      <div class="m"><div class="mv" id="m-sub-acc">—</div><div class="ml">Sucesso no substituto</div></div>
+      <div class="m"><div class="mv" id="m-tgt-acc">—</div><div class="ml">Transferencia para alvo</div></div>
+      <div class="m"><div class="mv" id="m-tr-rate">—</div><div class="ml">Taxa transferencia</div></div>
+      <div class="m"><div class="mv" id="m-tr-dist">—</div><div class="ml">Distorcao L&infin;</div></div>
+    </div>
+    <p class="hn">Observe como a fronteira do alvo e diferente da do substituto. Nem todos os ataques que funcionam no substituto transferem.</p>
+  </div>
+
+  <h3>O que observar na simulacao</h3>
+  <ol class="st st-c">
+    <li><strong>Com "Mesma arquitetura" e &epsilon; baixo (0.05-0.10)</strong> A transferencia e alta (~70-85%) porque os dois modelos compartilham a mesma estrutura interna. As setas vermelhas (ataques bem-sucedidos no substituto) frequentemente cruzam a fronteira do alvo tambem. E o cenario mais favoravel ao atacante.</li>
+    <li><strong>Mude para "Similar (CNN→CNN)" e compare</strong> A taxa de transferencia cai para ~50-70%. As fronteiras de decisao sao parecidas mas nao identicas — como dois mapas da mesma cidade desenhados por cartografos diferentes. Alguns ataques que cruzam a fronteira no substituto nao cruzam no alvo.</li>
+    <li><strong>Agora selecione "Diferente (CNN→ViT)"</strong> A transferencia despenca para ~30-50%. Transformers e CNNs aprendem features muito diferentes — as perturbacoes otimizadas para confundir convolucoes nao confundem mecanismos de atencao da mesma forma.</li>
+    <li><strong>Aumente &epsilon; para 0.30+ e observe</strong> Paradoxalmente, a taxa de transferencia pode nao melhorar proporcionalmente. Com &epsilon; muito alto, a perturbacao "overfita" ao substituto — encontra um caminho especifico para enganar aquele modelo que nao generaliza para outros. E o sweet spot &epsilon; moderado que maximiza transferencia.</li>
+  </ol>
+
+  <h3 id="trans-limits">Limitacoes da transferibilidade</h3>
+  <p>A transferibilidade <strong>nao e garantida</strong> e varia significativamente entre modelos e ataques. Modelos mais complexos ou com defesas (adversarial training, por exemplo) sao mais resistentes a ataques transferidos. A escolha do algoritmo de ataque tambem importa: ataques iterativos (PGD) tendem a overfitar ao substituto, enquanto ataques de passo unico (FGSM) transferem melhor em alguns cenarios.</p>
+
+  <h3>Quando a transferibilidade ainda e util</h3>
+  <ol class="st st-c">
+    <li><strong>Ataques "zero-query"</strong> O maior atrativo: nao precisa enviar nenhuma query ao modelo alvo. Em cenarios com rate-limiting severo (APIs cloud), e a unica opcao pratica. O atacante pode gerar milhares de exemplos adversariais offline e testar apenas os melhores.</li>
+    <li><strong>Ataques contra modelos com base compartilhada (2026)</strong> Hoje, muitas APIs comerciais usam foundation models similares (ViT, CLIP). Isso aumenta dramaticamente a transferibilidade — um ataque gerado contra um ViT pre-treinado transfere bem para outros ViTs fine-tunados.</li>
+    <li><strong>Como "seed" para ataques query-based</strong> Em vez de comecar do zero, o atacante pode usar um ataque transferido como ponto de partida e depois refinar com queries. Isso reduz drasticamente o numero de queries necessarias — de ~10.000 para ~100.</li>
+    <li><strong>Avaliacao de robustez barata</strong> Para engenheiros testando seus proprios modelos, a transferibilidade e uma forma rapida e barata de avaliar robustez sem implementar ataques query-based complexos. Se o modelo ja cai com ataques transferidos, nem precisa testar com queries.</li>
+  </ol>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  2. QUERY-BASED ATTACKS                                       -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="query">
+  <span class="sn sn-b">2</span>
+  <h2>Ataques baseados em Queries: sondando o desconhecido</h2>
+
+  <p>Quando a transferibilidade nao e suficiente, o atacante pode interagir diretamente com o modelo alvo. A ideia e simples: enviar inputs, observar os outputs, e usar esses pares para "entender" o modelo — e eventualmente estimar os gradientes necessarios para gerar exemplos adversariais.</p>
+
+  <div class="co co-b">
+    <strong>Objetivo fundamental:</strong> Gradientes levam a perturbacoes eficazes (como vimos no FGSM e PGD). Em ataques query-based, precisamos encontrar esses gradientes sem acesso direto ao modelo. Usamos queries para <strong>estimar</strong> os gradientes verdadeiros.
+  </div>
+
+  <h3 id="score">Score-Based: Diferencas Finitas</h3>
+
+  <p>Neste cenario, o modelo retorna <strong>scores de probabilidade</strong> (ex: "gato 85%, cachorro 12%, peixe 3%"). O atacante usa esses scores para aproximar o gradiente usando diferencas finitas:</p>
+
+  <div class="mb">
+    &nabla;<sub>x</sub>J(x) &asymp; [ J(x + h &middot; e<sub>i</sub>) &minus; J(x) ] / h
+  </div>
+
+  <p>Onde <span class="mi">h</span> e uma perturbacao pequena e <span class="mi">e<sub>i</sub></span> e o vetor unitario na i-esima dimensao. A ideia e medir o quanto a saida muda quando perturbamos um unico pixel — e essa mudanca e uma aproximacao da derivada parcial.</p>
+
+  <div class="co co-r">
+    <strong>O problema da dimensionalidade:</strong> Para calcular o gradiente completo, precisamos perturbar <strong>cada dimensao independentemente</strong>. Para uma imagem 28&times;28, isso sao N = 784 queries por passo de gradiente. Para ImageNet (224&times;224&times;3), sao N = 150.528 queries. A complexidade e O(N) por iteracao — extremamente cara!
+  </div>
+
+  <div id="score-viz"></div>
+  <h3>Simulacao: estimativa de gradiente por Diferencas Finitas</h3>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-b">Interativo</span><span class="ct">Aproximacao de gradiente em 2D com diferencas finitas</span></div>
+    <div class="sr">
+      <span class="sl">Queries usadas:</span>
+      <input type="range" min="2" max="100" value="2" step="2" id="fd-queries" data-input="updateFD">
+      <span class="sv" id="fd-q-val">2</span>
+    </div>
+    <div class="sr">
+      <span class="sl">Tamanho h:</span>
+      <input type="range" min="1" max="30" value="10" step="1" id="fd-h" data-input="updateFD">
+      <span class="sv" id="fd-h-val" style="font-family:var(--mono)">0.10</span>
+    </div>
+    <div style="margin:12px 0">
+      <canvas id="fd-canvas" width="400" height="280" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l)"></canvas>
+    </div>
+    <div class="mg c4">
+      <div class="m"><div class="mv" id="fd-err">—</div><div class="ml">Erro angular (&deg;)</div></div>
+      <div class="m"><div class="mv" id="fd-cos">—</div><div class="ml">Similaridade cosseno</div></div>
+      <div class="m"><div class="mv" id="fd-dim">—</div><div class="ml">Dimensoes estimadas</div></div>
+      <div class="m"><div class="mv" id="fd-tot">—</div><div class="ml">Total de queries</div></div>
+    </div>
+    <p class="hn">Mais queries = melhor aproximacao do gradiente real. Observe como a seta azul (estimada) converge para a seta verde (real).</p>
+  </div>
+
+  <h3>O que observar na simulacao</h3>
+  <ol class="st st-b">
+    <li><strong>Com apenas 2 queries, o gradiente estimado e muito impreciso</strong> A seta azul (estimativa) aponta numa direcao bem diferente da seta verde (gradiente real). O erro angular pode chegar a 60-80 graus. Isso acontece porque com 2 queries voce so captura 1 dimensao do gradiente, ignorando as outras.</li>
+    <li><strong>Aumente as queries progressivamente ate 50-100</strong> Observe como a seta azul se alinha progressivamente com a verde. A similaridade cosseno sobe de ~0.3 para ~0.95. Em alta dimensao (imagens reais), esse alinhamento e o que permite gerar perturbacoes eficazes.</li>
+    <li><strong>Agora mude o tamanho h</strong> Com h muito pequeno (0.01), a estimativa e teoricamente mais precisa, mas na pratica sofre de ruido numerico (as diferencas ficam tao pequenas que erros de arredondamento dominam). Com h muito grande (0.30), a estimativa fica enviesada — nao captura o gradiente local mas sim uma media grosseira. O sweet spot e entre 0.05 e 0.15.</li>
+    <li><strong>Pense na escala</strong> Se nesta simulacao 2D precisamos de ~50 queries para uma boa estimativa, numa imagem 784D (MNIST) precisariamos de ~39.000+ queries. E para ImageNet (150K dimensoes)... Os metodos modernos resolvem isso com projecoes aleatorias e subspacos.</li>
+  </ol>
+
+  <h3>Quando ataques score-based ainda sao uteis</h3>
+  <ol class="st st-b">
+    <li><strong>Quando o modelo retorna probabilidades completas</strong> Alguns modelos antigos ou mal configurados ainda retornam o vetor completo de probabilidades. Nesse caso, a informacao por query e maxima e metodos como NES (Natural Evolutionary Strategies) conseguem estimar gradientes com ~100-500 queries.</li>
+    <li><strong>Pesquisa e avaliacao de robustez</strong> Em contextos academicos, score-based attacks sao o padrao para benchmarking. Se voce tem controle sobre o modelo (esta testando o seu proprio), nao ha limite de queries e o custo computacional e aceitavel.</li>
+    <li><strong>Combinado com reducao de dimensionalidade</strong> Metodos como AutoZOOM (Chen et al., 2019) usam autoencoders para projetar o espaco de perturbacao para ~100 dimensoes, reduzindo o custo de O(150K) para O(100) queries por iteracao. Isso torna score-based attacks praticaveis mesmo em ImageNet.</li>
+  </ol>
+
+  <h3 id="decision">Decision-Based: Boundary Attack</h3>
+
+  <p>No cenario mais restritivo, o modelo retorna <strong>apenas a classe final</strong> (ex: "gato") — sem probabilidades, sem scores, sem nada numerico. Isso e cada vez mais comum em APIs modernas que limitam as informacoes para dificultar ataques.</p>
+
+  <p>O <strong>Boundary Attack</strong> (Brendel et al., 2018) resolve isso com uma abordagem elegante:</p>
+
+  <ol class="st st-b">
+    <li><strong>Comecar com uma imagem adversarial aleatoria</strong> Gere uma imagem de ruido puro que o modelo classifica erroneamente. Ela esta muito longe da imagem original (distorcao enorme), mas ja e "adversarial".</li>
+    <li><strong>Caminhar iterativamente em direcao a imagem original</strong> A cada passo, mova a imagem um pouco mais perto da imagem limpa — mantendo-a sempre do lado adversarial da fronteira de decisao.</li>
+    <li><strong>Fazer perturbacoes aleatorias na fronteira</strong> Quando estiver perto da fronteira, faca pequenos movimentos aleatorios. Se o modelo ainda classifica errado, mantenha; se classifica certo, descarte. Isso permite "deslizar" ao longo da fronteira de decisao ate encontrar o ponto adversarial mais proximo da imagem original.</li>
+  </ol>
+
+  <div id="decision-viz"></div>
+  <h3>Simulacao: Boundary Attack em 2D</h3>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-b">Interativo</span><span class="ct">Boundary Attack — caminhando na fronteira de decisao</span></div>
+    <div class="sr">
+      <span class="sl">Iteracao:</span>
+      <input type="range" min="0" max="100" value="0" step="1" id="ba-iter" data-input="updateBA">
+      <span class="sv" id="ba-iter-val">0</span>
+    </div>
+    <div class="br">
+      <button class="bt on-b" data-click="resetBA" style="min-width:140px">Reiniciar (nova seed)</button>
+    </div>
+    <div style="margin:12px 0">
+      <canvas id="ba-canvas" width="400" height="300" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l)"></canvas>
+    </div>
+    <div class="mg c3">
+      <div class="m"><div class="mv" id="ba-dist">—</div><div class="ml">Distancia L2 ao original</div></div>
+      <div class="m"><div class="mv" id="ba-class">—</div><div class="ml">Classe predita</div></div>
+      <div class="m"><div class="mv" id="ba-qs">—</div><div class="ml">Queries usadas</div></div>
+    </div>
+    <p class="hn">A bolinha vermelha comeca longe (ruido adversarial) e se aproxima da verde (imagem original), sempre ficando no lado errado da fronteira.</p>
+  </div>
+
+  <h3>O que observar na simulacao</h3>
+  <ol class="st st-b">
+    <li><strong>Iteracao 0: ponto vermelho longe do verde</strong> O ataque comeca com uma imagem de ruido aleatorio (bolinha vermelha) que ja esta na classe errada. A distancia L2 ao original e enorme (ex: >2.0). E como comecar com uma foto completamente aleatoria e dizer "isso e um gato" para um classificador de caes.</li>
+    <li><strong>Arraste o slider lentamente (0 → 50)</strong> A bolinha vermelha se move em direcao a verde, reduzindo a distancia. Mas observe: ela nunca cruza a fronteira de decisao (a linha entre as duas regioes coloridas). Cada passo a aproxima do original mantendo a classificacao errada.</li>
+    <li><strong>Iteracoes 50 → 100: movimentos menores, mais precisos</strong> Perto da fronteira, os passos ficam menores — o ataque esta "refinando" a posicao. A distancia L2 cai de ~2.0 para ~0.3. Agora a perturbacao e pequena o suficiente para ser imperceptivel numa imagem real.</li>
+    <li><strong>Clique "Reiniciar" para ver outra seed</strong> Cada execucao produz um caminho diferente porque as perturbacoes aleatorias sao diferentes. Mas o resultado final (distancia minima) e consistente — mostrando que o metodo converge independentemente do ponto de partida.</li>
+  </ol>
+
+  <h3>Quando ataques decision-based ainda sao uteis</h3>
+  <ol class="st st-b">
+    <li><strong>APIs modernas que retornam apenas hard labels</strong> Muitas APIs atuais (Amazon Rekognition, Google Vision) retornam apenas a classe mais provavel, sem probabilidades. Decision-based attacks sao a <strong>unica opcao</strong> nesse cenario — score-based attacks simplesmente nao funcionam sem scores.</li>
+    <li><strong>HopSkipJump (2020) como evolucao pratica</strong> O HopSkipJump melhora dramaticamente a eficiencia do Boundary Attack, usando estimativas de gradiente baseadas na fronteira para guiar a busca. Com ~1000-5000 queries, consegue perturbacoes comparaveis ao Boundary Attack com 25000+ queries.</li>
+    <li><strong>Avaliacao de robustez no cenario mais restritivo</strong> Se um modelo resiste a decision-based attacks com budget de 10.000 queries, isso e uma evidencia forte de robustez — porque o cenario e extremamente desfavoravel ao atacante. E o "stress test" mais honesto para seguranca.</li>
+  </ol>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  3. PAPERNOT ET AL.                                           -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="papernot">
+  <span class="sn sn-a">3</span>
+  <h2>Deep Dive: o metodo Papernot et al. (2017)</h2>
+
+  <p>O primeiro algoritmo a combinar com sucesso modelos substitutos e transferibilidade para quebrar sistemas reais. O paper "Practical Black-Box Attacks against Machine Learning" marcou o campo ao demonstrar que ataques black-box sao <strong>viaves na pratica</strong> contra servicos comerciais.</p>
+
+  <div class="co co-a">
+    <strong>Contribuicao chave:</strong> Papernot et al. mostraram que mesmo com acesso <strong>apenas aos labels</strong> retornados pelo modelo (nem probabilidades!), um atacante pode treinar um modelo substituto eficaz e gerar exemplos adversariais que enganam o alvo com taxas de 84-96%. O ataque funciona contra DNNs, logistic regression, SVMs e decision trees.
+  </div>
+
+  <h3>Threat Model</h3>
+  <p>O adversario quer forcar uma classificacao errada. Ele so tem acesso ao output do modelo (um <strong>oraculo O</strong>) — pode enviar qualquer input x e receber o label predito <span class="mi">O&#771;(x)</span>. Nao conhece a arquitetura, os parametros nem os dados de treino. O objetivo e produzir um x* minimamente alterado tal que <span class="mi">O&#771;(x*) &ne; O&#771;(x)</span>.</p>
+
+  <div class="mb">
+    x* = x + arg min<sub>&delta;x</sub> ||&delta;x|| &nbsp; tal que &nbsp; O&#771;(x + &delta;x) &ne; O&#771;(x)
+  </div>
+
+  <h3 id="papernot-algo">Algoritmo de treino do modelo substituto</h3>
+
+  <p>O ponto central do metodo e a <strong>Jacobian-based Dataset Augmentation</strong> — uma tecnica para gerar queries inteligentes que maximizam a informacao obtida do oraculo com poucas consultas.</p>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-a">Diagrama</span><span class="ct">Pipeline do ataque Papernot et al.</span></div>
+    <svg class="dg" viewBox="0 0 700 240" width="100%">
+      <defs><marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+      <!-- S0 -->
+      <rect x="10" y="30" width="100" height="55" rx="10" fill="var(--bg2)" stroke="var(--border)" stroke-width="0.5"/>
+      <text x="60" y="52" text-anchor="middle" font-size="12" font-weight="600" fill="var(--text)">S&#8320; inicial</text>
+      <text x="60" y="68" text-anchor="middle" font-size="10" fill="var(--text3)">~100-150 amostras</text>
+      <!-- Arrow -->
+      <line x1="110" y1="57" x2="140" y2="57" stroke="var(--border)" stroke-width="1" marker-end="url(#arr)"/>
+      <!-- Oracle -->
+      <rect x="142" y="20" width="110" height="75" rx="10" fill="var(--red-l)" stroke="var(--red)" stroke-width="0.5"/>
+      <text x="197" y="42" text-anchor="middle" font-size="12" font-weight="600" fill="var(--red-d)">Oraculo O</text>
+      <text x="197" y="58" text-anchor="middle" font-size="10" fill="var(--text2)">Query x → O&#771;(x)</text>
+      <text x="197" y="74" text-anchor="middle" font-size="9" fill="var(--text3)">Retorna labels</text>
+      <!-- Arrow -->
+      <line x1="252" y1="57" x2="282" y2="57" stroke="var(--border)" stroke-width="1" marker-end="url(#arr)"/>
+      <!-- Substitute training -->
+      <rect x="284" y="20" width="120" height="75" rx="10" fill="var(--amber-l)" stroke="var(--amber)" stroke-width="0.5"/>
+      <text x="344" y="40" text-anchor="middle" font-size="12" font-weight="600" fill="var(--amber-d)">Treinar F</text>
+      <text x="344" y="56" text-anchor="middle" font-size="10" fill="var(--text2)">Modelo substituto</text>
+      <text x="344" y="72" text-anchor="middle" font-size="9" fill="var(--text3)">&rho; epocas</text>
+      <!-- Loop arrow back -->
+      <path d="M 344 95 L 344 120 L 60 120 L 60 85" fill="none" stroke="var(--amber)" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+      <text x="200" y="138" text-anchor="middle" font-size="10" fill="var(--amber-d)">Jacobian-based Augmentation: S&#x1D746;&#8330;&#8321; = {x + &lambda; &middot; sgn(J&#7580;[O&#771;(x)])} &cup; S&#x1D746;</text>
+      <!-- Arrow to crafting -->
+      <line x1="404" y1="57" x2="434" y2="57" stroke="var(--border)" stroke-width="1" marker-end="url(#arr)"/>
+      <!-- Crafting -->
+      <rect x="436" y="20" width="120" height="75" rx="10" fill="var(--purple-l)" stroke="var(--purple)" stroke-width="0.5"/>
+      <text x="496" y="40" text-anchor="middle" font-size="12" font-weight="600" fill="var(--purple-d)">Gerar x*</text>
+      <text x="496" y="56" text-anchor="middle" font-size="10" fill="var(--text2)">FGSM ou JSMA</text>
+      <text x="496" y="72" text-anchor="middle" font-size="9" fill="var(--text3)">no substituto F</text>
+      <!-- Arrow -->
+      <line x1="556" y1="57" x2="586" y2="57" stroke="var(--border)" stroke-width="1" marker-end="url(#arr)"/>
+      <!-- Result -->
+      <rect x="588" y="28" width="100" height="58" rx="28" fill="var(--red-l)" stroke="var(--red)" stroke-width="0.5"/>
+      <text x="638" y="52" text-anchor="middle" font-size="12" font-weight="600" fill="var(--red-d)">Transferir</text>
+      <text x="638" y="68" text-anchor="middle" font-size="9" fill="var(--text3)">x* engana O</text>
+      <!-- Descriptions -->
+      <text x="350" y="185" text-anchor="middle" font-size="11" fill="var(--text3)">O modelo F aprende a imitar as fronteiras de decisao do oraculo O sem ver seus internos.</text>
+      <text x="350" y="205" text-anchor="middle" font-size="11" fill="var(--text3)">A augmentation Jacobiana e essencialmente FGSM aplicado ao proprio substituto para gerar queries informativas.</text>
+    </svg>
+  </div>
+
+  <h3>O algoritmo passo a passo</h3>
+
+  <pre>
+# Algoritmo 1 — Treino do Substituto (Papernot et al.)
+# Input: Oraculo O_tilde, max_rho epocas, S_0 inicial, lambda
+
+1. Definir arquitetura F (ex: CNN simples)
+2. Para rho = 0 ... max_rho - 1:
+   3. Rotular: D = {(x, O_tilde(x)) : x in S_rho}   # queries ao oraculo
+   4. Treinar: theta_F = train(F, D)                    # treinar substituto
+   5. Augmentar: S_{rho+1} = {x + lambda * sgn(J_F(x)[O_tilde(x)]) : x in S_rho} U S_rho
+6. Retornar theta_F
+  </pre>
+
+  <div class="co co-a">
+    <strong>Insight chave da augmentation Jacobiana:</strong> Na linha 5, o algoritmo calcula o Jacobiano do substituto F e usa seu sinal para gerar novos pontos. Isso e equivalente a aplicar FGSM no proprio substituto — mas em vez de usar a perturbacao como ataque, usa-a para <strong>explorar as regioes onde o modelo e mais sensivel</strong>. Esses pontos sao exatamente onde o oraculo fornece a informacao mais util. E uma forma brilhante de ser query-efficient.
+  </div>
+
+  <h3>Detalhes praticos</h3>
+  <ol class="st st-a">
+    <li><strong>S&#8320; inicial: pequeno e representativo</strong> Para MNIST, bastaram 150 amostras do test set ou 100 amostras handcrafted (10 digitos escritos a mao). O ponto crucial e que S&#8320; <strong>nao precisa vir do dataset original</strong> — pode ser sintetico.</li>
+    <li><strong>Arquitetura F: escolha informada mas flexivel</strong> Saber que o alvo faz classificacao de imagens sugere uma CNN. Papernot et al. mostraram que a escolha exata da arquitetura tem impacto limitado — ate logistic regression funciona como substituto.</li>
+    <li><strong>&lambda; = 0.1 e step size alternante</strong> O &lambda; controla o tamanho do passo na augmentation. Valores grandes diminuem estabilidade. O truque de alternar o sinal periodicamente (&lambda; &middot; (-1)^&lfloor;p/&tau;&rfloor;) melhora a qualidade da aproximacao do oraculo.</li>
+    <li><strong>Reservoir sampling para limitar queries</strong> Sem limitacao, o dataset cresce exponencialmente a cada epoca (cada ponto gera um novo). Reservoir sampling seleciona k pontos aleatorios antes da augmentacao, mantendo o numero de queries controlado.</li>
+  </ol>
+
+  <div id="papernot-viz"></div>
+  <h3>Simulacao: treino do modelo substituto</h3>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-a">Interativo</span><span class="ct">Evolucao do substituto F imitando o oraculo O</span></div>
+    <div class="sr">
+      <span class="sl">Epoca &rho;:</span>
+      <input type="range" min="0" max="6" value="0" step="1" id="pn-epoch" data-input="updatePN">
+      <span class="sv" id="pn-epoch-val">0</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:12px 0">
+      <div>
+        <div style="font-size:13px;font-weight:600;text-align:center;margin-bottom:6px">Oraculo O (alvo real)</div>
+        <canvas id="pn-c-oracle" width="300" height="200" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l)"></canvas>
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:600;text-align:center;margin-bottom:6px">Substituto F (aprendendo)</div>
+        <canvas id="pn-c-sub" width="300" height="200" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l)"></canvas>
+      </div>
+    </div>
+    <div class="mg c4">
+      <div class="m"><div class="mv" id="pn-queries">—</div><div class="ml">Queries totais</div></div>
+      <div class="m"><div class="mv" id="pn-agree">—</div><div class="ml">Concordancia F≈O</div></div>
+      <div class="m"><div class="mv" id="pn-transfer">—</div><div class="ml">Transferencia FGSM</div></div>
+      <div class="m"><div class="mv" id="pn-samples">—</div><div class="ml">Pontos em S&rho;</div></div>
+    </div>
+    <p class="hn">Os pontos brancos sao as amostras de treino do substituto. A cada epoca, novos pontos aparecem nas regioes sensiveis do modelo (augmentation Jacobiana).</p>
+  </div>
+
+  <h3>O que observar na simulacao</h3>
+  <ol class="st st-a">
+    <li><strong>Epoca 0: o substituto e aleatorio</strong> A fronteira de decisao do substituto (direita) e bem diferente da do oraculo (esquerda). A concordancia e baixa (~50-60%, pouco melhor que aleatorio) e a transferencia e pessima. Os pontos brancos (S&#8320;) estao espalhados uniformemente.</li>
+    <li><strong>Epocas 1-3: convergencia rapida</strong> A cada epoca, novos pontos aparecem concentrados nas regioes onde o modelo muda mais (perto da fronteira). A fronteira do substituto comeca a se alinhar com a do oraculo. A concordancia sobe para 70-80% e a transferencia ja ultrapassa 60%.</li>
+    <li><strong>Epocas 4-6: refinamento</strong> Os pontos novos se concentram cada vez mais perto da fronteira de decisao — e exatamente onde a informacao e mais util. A concordancia chega a ~90% e a transferencia a ~80%. Observe que a fronteira do substituto nao precisa ser identica ao oraculo — so precisa ser similar o suficiente para que os ataques transfiram.</li>
+    <li><strong>Numero de queries: centenas, nao milhares</strong> O total de queries ao oraculo fica na casa de 200-800 para 6 epocas com S&#8320; de 100 amostras. Isso e dramaticamente menos que ataques query-based puros que precisam de 10.000+ queries. A eficiencia vem da augmentation Jacobiana.</li>
+  </ol>
+
+  <h3 id="papernot-results">Resultados experimentais</h3>
+
+  <table class="tb">
+    <thead><tr><th>Alvo</th><th>Substituto</th><th>Dataset</th><th>Taxa de misclassificacao</th><th>Queries</th></tr></thead>
+    <tbody>
+      <tr><td><strong>MetaMind DNN</strong></td><td>DNN</td><td>MNIST</td><td><span class="tag tag-f">84.24%</span></td><td>~6400</td></tr>
+      <tr><td><strong>MetaMind DNN</strong></td><td>DNN (handcrafted S&#8320;)</td><td>MNIST</td><td><span class="tag tag-w">78.72%</span></td><td>~6400</td></tr>
+      <tr><td><strong>Amazon ML</strong></td><td>Logistic Regression</td><td>MNIST</td><td><span class="tag tag-f">96.19%</span></td><td>800</td></tr>
+      <tr><td><strong>Google Cloud</strong></td><td>Logistic Regression</td><td>MNIST</td><td><span class="tag tag-f">88.94%</span></td><td>800</td></tr>
+      <tr><td><strong>Oracle local (GTSRB)</strong></td><td>DNN</td><td>Traffic Signs</td><td><span class="tag tag-w">64.24%</span></td><td>~6400</td></tr>
+    </tbody>
+  </table>
+
+  <div class="co co-r">
+    <strong>O resultado mais chocante:</strong> A Amazon ML foi enganada em 96.19% dos casos usando apenas um modelo de <strong>regressao logistica</strong> como substituto — o modelo mais simples possivel — com apenas 800 queries. Isso demonstra que mesmo defesas sofisticadas no servidor sao vulneraveis quando a transferibilidade e explorada sistematicamente.
+  </div>
+
+  <h3>Generalizacao do ataque</h3>
+  <p>O ataque nao se limita a DNNs. Papernot et al. demonstraram que funciona contra qualquer classificador: logistic regression, SVMs, decision trees e kNN. A unica restricao e que o <strong>substituto precisa ser diferenciavel</strong> (para calcular o Jacobiano na augmentation), mas o alvo pode ser qualquer coisa.</p>
+
+  <h3>Quando o metodo Papernot et al. ainda e util</h3>
+  <ol class="st st-a">
+    <li><strong>Cenarios com budget de queries moderado (100-1000)</strong> O metodo e ideal quando o atacante pode fazer centenas de queries mas nao milhares. Com 800 queries, conseguiu 96% contra a Amazon. Para APIs com rate-limiting de ~1000 queries/dia, e perfeitamente viavel.</li>
+    <li><strong>Quando nao se sabe nada sobre o alvo</strong> O metodo nao pressupoe conhecimento da arquitetura — logistic regression funcionou como substituto de DNNs. Isso torna o ataque extremamente pratico: o atacante so precisa saber que o alvo e um classificador.</li>
+    <li><strong>Base conceitual para ataques modernos</strong> Embora metodos como SimBA e Square Attack sejam mais query-efficient, a ideia central de Papernot (treinar um substituto com augmentation inteligente) permanece influente. Muitos ataques modernos usam modelos substitutos pre-treinados como initialization.</li>
+    <li><strong>Avaliacao de seguranca de APIs</strong> Para red teams testando a seguranca de servicos de ML, o metodo Papernot e uma ferramenta pratica e bem documentada. E um "canivete suico" que funciona contra quase qualquer tipo de modelo.</li>
+  </ol>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  4. STATE OF THE ART                                          -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="sota">
+  <span class="sn sn-p">4</span>
+  <h2>Estado da Arte: ataques black-box em 2026</h2>
+
+  <p>Desde Papernot (2017), o campo evoluiu dramaticamente. Os ataques modernos focam em <strong>eficiencia extrema de queries</strong> (de ~1000 para &lt;50) e em funcionar no cenario mais restritivo possivel (hard labels only).</p>
+
+  <h3>Evolucao dos modelos substitutos (2017 vs 2026)</h3>
+  <div class="co co-p">
+    <strong>Mudanca de paradigma:</strong> Em 2017, Papernot treinou CNNs simples ou regressao logistica como substitutos, do zero. Em 2026, atacantes usam <strong>Foundation Models</strong> massivos (Vision Transformers, modelos CLIP) ja pre-treinados e apenas os fine-tunam. A transferibilidade e muito maior porque muitas APIs comerciais compartilham as mesmas arquiteturas de base — um ataque contra um ViT pre-treinado transfere bem para outros ViTs fine-tunados.
+  </div>
+
+  <h3>Desafios modernos contra o ataque Papernot</h3>
+  <table class="tb">
+    <thead><tr><th>Desafio</th><th>Detalhes</th><th>Impacto</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Rate Limiting</strong></td><td>WAFs e API gateways detectam padroes anomalos de queries. 800 queries rapidas podem acionar bloqueio.</td><td><span class="tag tag-f">Alto</span></td></tr>
+      <tr><td><strong>Hard Labels</strong></td><td>Muitas APIs retornam apenas top-1 label sem probabilidades. JSMA nao funciona sem scores.</td><td><span class="tag tag-f">Alto</span></td></tr>
+      <tr><td><strong>Deteccao de anomalias</strong></td><td>Sistemas como Feature Squeezing detectam inputs adversariais em tempo real.</td><td><span class="tag tag-w">Medio</span></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Metodos modernos em destaque</h3>
+
+  <h4>SimBA — Simple Black-box Adversarial Attacks</h4>
+  <p>Abordagem score-based que usa direcoes aleatorias ortogonais em vez de estimar o gradiente completo. A cada iteracao, escolhe uma direcao aleatoria e testa se adicionar/subtrair nessa direcao diminui a probabilidade da classe correta. Extremamente simples e surpreendentemente eficaz.</p>
+
+  <h4>Square Attack</h4>
+  <p>Ataque randomizado que nao usa nenhuma aproximacao de gradiente. Em vez disso, faz perturbacoes em <strong>blocos quadrados</strong> aleatorios da imagem e verifica se a probabilidade da classe correta diminui. E query-efficient porque perturba muitos pixels simultaneamente (um quadrado, nao pixel por pixel).</p>
+
+  <h4>HopSkipJump</h4>
+  <p>Evolucao do Boundary Attack para o cenario de hard labels. Usa estimativas de gradiente baseadas na posicao da fronteira de decisao. Com ~1000-5000 queries, alcanca resultados comparaveis ao PGD white-box — um feito notavel para um ataque que so ve labels.</p>
+
+  <h3>Quando ataques black-box modernos ainda sao necessarios</h3>
+  <ol class="st st-p">
+    <li><strong>Ataques contra modelos proprietarios</strong> A maioria dos modelos em producao sao caixas-pretas por definicao. Google Vision, AWS Rekognition, Azure Cognitive Services — todos sao acessiveis apenas por API. Ataques black-box sao o unico caminho.</li>
+    <li><strong>Red teaming e avaliacao de seguranca</strong> Empresas responsaveis testam seus modelos contra ataques black-box como parte do processo de seguranca. Metodos como Square Attack e HopSkipJump sao ferramentas padrao de avaliacao.</li>
+    <li><strong>Evasao de sistemas de seguranca</strong> Filtros de spam, detectores de intrusao, classificadores de malware — todos sao potenciais alvos de ataques de evasao black-box no mundo real.</li>
+    <li><strong>Pesquisa em robustez de ML</strong> Entender os limites dos ataques black-box e essencial para projetar defesas eficazes. Cada novo ataque revela vulnerabilidades que guiam o desenvolvimento de modelos mais seguros.</li>
+  </ol>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  COMPARACAO                                                  -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="compare">
+  <span class="sn sn-pk">5</span>
+  <h2>Comparacao geral e consideracoes praticas</h2>
+
+  <table class="tb">
+    <thead><tr><th>Metodo</th><th>Tipo</th><th>Queries</th><th>Info necessaria</th><th>Eficacia</th><th>Fraqueza</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Transferibilidade</strong><br><span style="font-size:10px;color:var(--text3)">Diversos, 2017+</span></td>
+        <td>Transfer</td>
+        <td><span class="tag tag-ok">0</span></td>
+        <td>Nenhuma</td>
+        <td>30-85%</td>
+        <td>Nao garantida; varia com arquitetura</td>
+      </tr>
+      <tr>
+        <td><strong>Diferencas Finitas</strong><br><span style="font-size:10px;color:var(--text3)">Ilyas et al., 2018</span></td>
+        <td>Score-based</td>
+        <td><span class="tag tag-f">O(N)</span></td>
+        <td>Probabilidades</td>
+        <td>Alta</td>
+        <td>Custo explosivo em alta dimensao</td>
+      </tr>
+      <tr>
+        <td><strong>Papernot et al.</strong><br><span style="font-size:10px;color:var(--text3)">2017</span></td>
+        <td>Substituto + Transfer</td>
+        <td><span class="tag tag-w">800-6400</span></td>
+        <td>Labels only</td>
+        <td>84-96%</td>
+        <td>Rate limiting; hard labels modernos</td>
+      </tr>
+      <tr>
+        <td><strong>Boundary Attack</strong><br><span style="font-size:10px;color:var(--text3)">Brendel et al., 2018</span></td>
+        <td>Decision-based</td>
+        <td><span class="tag tag-f">25000+</span></td>
+        <td>Top-1 label</td>
+        <td>Alta</td>
+        <td>Muito lento; muitas queries</td>
+      </tr>
+      <tr>
+        <td><strong>Square Attack</strong><br><span style="font-size:10px;color:var(--text3)">Andriushchenko et al., 2020</span></td>
+        <td>Score-based</td>
+        <td><span class="tag tag-ok">&lt;1000</span></td>
+        <td>Probabilidades</td>
+        <td>Muito alta</td>
+        <td>Precisa de scores</td>
+      </tr>
+      <tr>
+        <td><strong>HopSkipJump</strong><br><span style="font-size:10px;color:var(--text3)">Chen et al., 2020</span></td>
+        <td>Decision-based</td>
+        <td><span class="tag tag-w">1000-5000</span></td>
+        <td>Top-1 label</td>
+        <td>Alta</td>
+        <td>Mais complexo de implementar</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="co co-pk">
+    <strong>A licao fundamental (Prof. Jurie):</strong> Ataques black-box sao uma ameaca real e significativa. A transferibilidade e os ataques query-based permitem enganar modelos sem acesso completo. Entender estas tecnicas e <strong>crucial</strong> para construir sistemas de IA robustos e seguros. O proximo passo: defesas contra ataques adversariais!
+  </div>
+
+  <h3>Consideracoes praticas para engenheiros</h3>
+  <ol class="st st-pk">
+    <li><strong>Sempre assuma o cenario black-box</strong> Em producao, todo atacante e black-box por padrao. Modelos que so resistem a ataques white-box (porque "ninguem tem acesso") estao sob falsa sensacao de seguranca. Teste com ataques de transferibilidade e query-based.</li>
+    <li><strong>Rate limiting e a primeira barreira</strong> Limitar o numero de queries por IP/usuario/tempo e a defesa mais basica contra ataques query-based. 800 queries em 1 hora deve disparar alertas. Mas cuidado: atacantes sofisticados distribuem queries por multiplas contas.</li>
+    <li><strong>Minimizar informacao no output</strong> Retornar apenas o top-1 label (sem probabilidades) dificulta enormemente score-based attacks. Cada bit de informacao extra que voce retorna ajuda o atacante.</li>
+    <li><strong>Monitoramento de padroes anomalos</strong> Queries adversariais tem padroes distintos (muitas imagens similares, perturbacoes sistematicas). Sistemas de deteccao de anomalias (como Feature Squeezing) complementam defesas no modelo.</li>
+    <li><strong>Defense in depth</strong> Combine adversarial training (robustez do modelo) + rate limiting (barreira de queries) + deteccao (Feature Squeezing) + output minimo (hard labels). Nenhuma defesa isolada e suficiente.</li>
+  </ol>
+
+  <h3>Questoes para reflexao (Q&A do curso)</h3>
+  <div class="co co-b">
+    <strong>1.</strong> Explique o conceito de transferibilidade e por que e importante no contexto black-box.<br>
+    <strong>2.</strong> Que fatores influenciam o grau de transferencia entre modelos?<br>
+    <strong>3.</strong> Com acesso limitado a queries, que estrategias voce usaria para ataques eficazes?<br>
+    <strong>4.</strong> Descreva a diferenca entre ataques score-based e decision-based. Qual geralmente precisa de menos queries?<br>
+    <strong>5.</strong> Que defesas baseadas em limitacao de queries existem? Quais sao suas limitacoes?<br>
+    <strong>6.</strong> Como a dimensionalidade do input afeta a eficiencia de ataques query-based?<br>
+    <strong>7.</strong> Explique como modelos substitutos sao usados em ataques black-box. Quais os desafios?<br>
+    <strong>8.</strong> Do ponto de vista etico, quais riscos e responsabilidades estao associados a pesquisa em ataques black-box?
+  </div>
+</section>
+
+<footer class="ft">
+  <p>Baseado nos slides de Frederic Jurie — Security of AI, Chap 5 — ENSICAEN (Mars 2026)</p>
+  <p>
+    <a href="https://arxiv.org/abs/1602.02697">Papernot et al., 2017</a> &middot;
+    <a href="https://arxiv.org/abs/1804.08598">Ilyas et al., 2018 (NES)</a> &middot;
+    <a href="https://arxiv.org/abs/1712.04248">Brendel et al., 2018 (Boundary)</a> &middot;
+    <a href="https://arxiv.org/abs/1905.07121">Xie et al., 2019 (Input Diversity)</a> &middot;
+    <a href="https://arxiv.org/abs/1805.11770">Chen et al., 2019 (AutoZOOM)</a> &middot;
+    <a href="https://arxiv.org/abs/1908.07200">Andriushchenko et al., 2020 (Square)</a> &middot;
+    <a href="https://arxiv.org/abs/1904.02144">Chen et al., 2020 (HopSkipJump)</a>
+  </p>
+</footer>
+
+</div>
