@@ -1,0 +1,615 @@
+<div class="toc-progress" id="progress"></div>
+<nav class="topnav">
+  <div class="topnav-inner">
+    <a href="./" class="nav-link" data-route="/">← Índice</a>
+    <a href="#intro" class="nav-link active" data-section="intro">Intro</a>
+    <a href="#attacks" class="nav-link" data-section="attacks">1. Ataques</a>
+    <a href="#anon" class="nav-link" data-section="anon">2. Anonimizacao</a>
+    <a href="#randresp" class="nav-link" data-section="randresp">3. Resp. Aleatoria</a>
+    <a href="#dp" class="nav-link" data-section="dp">4. Diff. Privacy</a>
+    <a href="#dpml" class="nav-link" data-section="dpml">5. DP-SGD</a>
+    <a href="#resumo" class="nav-link" data-section="resumo">Resumo</a>
+  </div>
+</nav>
+
+<div class="page">
+
+<header class="hero" id="intro">
+  <div class="hero-eyebrow">Security of AI — Chapitre 9</div>
+  <h1>Privacidade em Machine Learning</h1>
+  <p class="hero-sub">Material completo com demonstracoes matematicas detalhadas, simulacoes interativas e exemplos do TP. Baseado nos slides de Benjamin Sykes, ENSICAEN (Mars 2026).</p>
+</header>
+
+<section>
+  <h3>O que e privacidade?</h3>
+  <p>Privacidade e o direito e a capacidade de individuos <strong>controlarem o acesso</strong> as suas informacoes pessoais. No contexto de dados, o desafio e permitir que analistas aprendam <strong>tendencias globais</strong> sobre dados sensiveis <strong>sem revelar informacoes especificas de individuos</strong>.</p>
+
+  <div class="co co-r">
+    <strong>O paradoxo central:</strong> Dados estao no centro dos modelos economicos das empresas de tecnologia. Data brokers compram e vendem dados pessoais (1000 emails custam entre $1 e $80). Na UE, o GDPR tenta impedir que dados privados vazem entre entidades — mas como garantir isso matematicamente?
+  </div>
+
+  <nav class="toc">
+    <div class="toc-title">Sumario</div>
+    <a href="#attacks">1. Exemplos de ataques a privacidade</a>
+    <a href="#linkage" class="indent">1.1 Linkage Attacks (com demo do TP)</a>
+    <a href="#inversion" class="indent">1.2 Model Inversion, Memorizacao & Membership</a>
+    <a href="#anon">2. Tentativas de anonimizacao (e suas falhas)</a>
+    <a href="#pseudo" class="indent">2.1 Pseudo-anonimizacao</a>
+    <a href="#hashing" class="indent">2.2 Hashing (e o caso TLC)</a>
+    <a href="#kanon" class="indent">2.3 k-Anonymity: definicao formal e demonstracao</a>
+    <a href="#randresp">3. Resposta Aleatoria (Randomised Response)</a>
+    <a href="#rr-formal" class="indent">3.1 Formalizacao e mecanismo</a>
+    <a href="#rr-math" class="indent">3.2 Demonstracoes: esperanca, estimador, variancia</a>
+    <a href="#rr-viz" class="indent">3.3 Simulacao interativa</a>
+    <a href="#dp">4. Differential Privacy</a>
+    <a href="#dp-motiv" class="indent">4.1 Motivacao: vulnerabilidade de queries</a>
+    <a href="#dp-def" class="indent">4.2 Definicao formal de &epsilon;-DP</a>
+    <a href="#laplace" class="indent">4.3 Mecanismo de Laplace (com demonstracao)</a>
+    <a href="#dp-viz" class="indent">4.4 Simulacoes interativas</a>
+    <a href="#dpml">5. DP para Deep Learning (DP-SGD)</a>
+    <a href="#logreg" class="indent">5.1 Regressao logistica e gradient descent</a>
+    <a href="#dpsgd-algo" class="indent">5.2 DP-SGD: clip, ruido e algoritmo</a>
+    <a href="#dpsgd-tradeoff" class="indent">5.3 O tradeoff &epsilon; vs accuracy</a>
+    <a href="#resumo">6. Resumo</a>
+  </nav>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!--  1. ATTACKS ON PRIVACY                                     -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<section id="attacks">
+  <span class="sn sn-r">1</span>
+  <h2>Exemplos onde a privacidade esta em risco</h2>
+
+  <h3 id="linkage">1.1 Linkage Attacks: cruzando bases de dados</h3>
+  <p>Mesmo com dados "anonimizados", um atacante pode <strong>cruzar informacoes de fontes diferentes</strong> para re-identificar individuos. O caso classico: Sweeney (2000) mostrou que <strong>87% das pessoas nos EUA</strong> podem ser re-identificadas unicamente pela combinacao de data de nascimento, genero e CEP.</p>
+
+  <h4>Demonstracao pratica do TP: o ataque a Annie Mone</h4>
+  <p>No TP, temos duas bases: <code>anonymised_df</code> (sem Nome/SSN, mas com DOB, Zip, salario) e <code>df_vote</code> (publica, com Nome, DOB, Zip). Sabemos que Annie Mone nasceu em 1/2/1961 e mora no CEP 14000.</p>
+
+  <div class="link-grid">
+    <div>
+      <p style="font-size:0.8rem;font-weight:600;color:var(--blue-d);margin-bottom:6px">Base publica (df_vote)</p>
+      <table class="link-tbl">
+        <tr><th>Nome</th><th>DOB</th><th>Zip</th></tr>
+        <tr><td class="match">Annie Mone</td><td class="match">1/2/1961</td><td class="match">14000</td></tr>
+        <tr><td>Outro</td><td>3/5/1980</td><td>14000</td></tr>
+      </table>
+    </div>
+    <div class="arrow">⟶<br><span style="font-size:0.7rem">JOIN ON<br>DOB, Zip</span></div>
+    <div>
+      <p style="font-size:0.8rem;font-weight:600;color:var(--teal-d);margin-bottom:6px">Base "anonimizada"</p>
+      <table class="link-tbl">
+        <tr><th>DOB</th><th>Zip</th><th>Salario</th></tr>
+        <tr><td class="match">1/2/1961</td><td class="match">14000</td><td class="match">&le;50K</td></tr>
+        <tr><td>3/5/1980</td><td>14000</td><td>&gt;50K</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <pre>
+# Em Pandas (equivalente ao SQL JOIN):
+annies_row = df_vote[(df_vote['Name'] == 'Annie Mone') 
+                     & (df_vote['Zip'] == 14000) 
+                     & (df_vote['DOB'] == '1/2/1961')]
+
+# Linkage attack: cruzar com a base anonimizada
+query = annies_row.merge(anonymised_df, on=['Zip', 'DOB'])
+# → Agora sabemos o salario de Annie!</pre>
+
+  <div class="co co-r">
+    <strong>Resultado:</strong> Mesmo tendo removido Name e SSN da base, o cruzamento por DOB + Zip nos revela o salario de Annie. Se usarmos apenas Zip, obtemos 4 candidatos — adicionando DOB, ficamos com 1 so. Quanto mais quasi-identificadores cruzamos, mais preciso o ataque.
+  </div>
+
+  <h3 id="inversion">1.2 Model Inversion, Memorizacao e Membership Attacks</h3>
+
+  <table class="tb">
+    <thead><tr><th>Ataque</th><th>Descricao</th><th>Exemplo real</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Model Inversion</strong></td>
+        <td>Usando apenas o modelo ML, <strong>reconstruir dados de treino</strong> (ex: imagens de pacientes a partir de scores de confianca)</td>
+        <td>Fredrikson et al. [6] (2015)</td>
+      </tr>
+      <tr>
+        <td><strong>Memorizacao</strong></td>
+        <td>O modelo <strong>decorou</strong> dados de treino e os regurgita quando estimulado</td>
+        <td>Carlini et al. — extrair dados do Stable Diffusion [14,2] e ChatGPT [3]</td>
+      </tr>
+      <tr>
+        <td><strong>Membership Attack</strong></td>
+        <td>Determinar se um <strong>registro especifico</strong> estava presente no treino do modelo</td>
+        <td>Shokri et al. [10] (2017)</td>
+      </tr>
+      <tr>
+        <td><strong>Federated Learning</strong></td>
+        <td>Mesmo em treino distribuido, <strong>extrair palavras</strong> digitadas por um usuario</td>
+        <td>Suliman & Leith [11] (2023) — Google Keyboard</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!--  2. ANONYMISATION FAILURES                                 -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<section id="anon">
+  <span class="sn sn-c">2</span>
+  <h2>Tentativas de anonimizacao (e suas falhas)</h2>
+
+  <h3 id="pseudo">2.1 Pseudo-anonimizacao: remover identificadores diretos</h3>
+  <p>Considere esta base de dados sensivel (dos slides):</p>
+
+  <div style="overflow-x:auto;margin:1rem 0;border:1px solid var(--border-l);border-radius:var(--r)">
+    <div class="db-row hdr"><div>Nome</div><div>Idade</div><div>Saude</div><div>Compra</div><div>Cidade</div></div>
+    <div class="db-row"><div>Alice</div><div>72</div><div class="hl">Diabetes</div><div>Insulina</div><div>Caen</div></div>
+    <div class="db-row"><div>Bob</div><div>35</div><div>—</div><div>Vitaminas</div><div>London</div></div>
+    <div class="db-row"><div>Charlie</div><div>39</div><div class="hl">Coracao</div><div>Medicamento</div><div>Berlin</div></div>
+    <div class="db-row"><div>Diana</div><div>61</div><div class="hl">Ansiedade</div><div>Livro</div><div>Paris</div></div>
+    <div class="db-row"><div>William</div><div>22</div><div>—</div><div>Proteina</div><div>Herouville</div></div>
+  </div>
+
+  <p>Se removermos os nomes (<strong>pseudo-anonimizacao</strong>), os dados ainda sao vulneraveis. Idade + Cidade + Doenca pode convergir para um subconjunto muito pequeno. Bases publicas (lista telefonica, registros eleitorais) permitem re-identificacao.</p>
+
+  <h3 id="hashing">2.2 Hashing como solucao? O desastre do TLC</h3>
+  <p>A Taxi and Limousine Commission de NY tentou hashear placas com <strong>SHA-256</strong>. Problema: placas seguem <code>LL NNN LL</code> — espaco finito e pequeno. Basta hashear todas as combinacoes possiveis e comparar (forca bruta trivial). Cruzando com fotos de paparazzi (hora + local), descobriram enderecos e gorjetas de famosos [1,4].</p>
+
+  <h3 id="kanon">2.3 k-Anonymity: uma primeira tentativa formal</h3>
+
+  <div class="proof">
+    <div class="proof-title">Definicao formal de k-Anonymity (Sweeney, 2002 [12])</div>
+    <p>Um dataset <span class="mi">D</span> satisfaz <strong>k-Anonymity</strong> para um dado <span class="mi">k</span> se:</p>
+    <div class="step">&forall; r<sub>1</sub> &isin; D, &exist; pelo menos k &minus; 1 outras linhas r<sub>2</sub>, ..., r<sub>k</sub> &isin; D</div>
+    <div class="explain">Para cada registro no dataset, existem pelo menos k-1 outros registros...</div>
+    <div class="step">tais que &Pi;<sub>qi(D)</sub> r<sub>1</sub> = &Pi;<sub>qi(D)</sub> r<sub>2</sub> = &sdot;&sdot;&sdot; = &Pi;<sub>qi(D)</sub> r<sub>k</sub></div>
+    <div class="explain">...que sao identicos quando projetados sobre os <strong>quasi-identificadores</strong> qi(D). A projecao &Pi; seleciona apenas as colunas que sao quasi-identificadores (ex: Idade, Zip).</div>
+    <p style="margin-top:12px"><strong>Em outras palavras:</strong> cada combinacao de quasi-identificadores aparece em pelo menos <span class="mi">k</span> linhas. Se k = 3 e os quasi-identificadores sao (Idade, Zip), entao todo par (Idade, Zip) no dataset deve ter no minimo 3 registros.</p>
+  </div>
+
+  <h4>Como tornar um dataset k-anonimo: generalizacao + suppression</h4>
+  <p>Duas tecnicas sao usadas juntas:</p>
+
+  <ol class="st st-c">
+    <li><strong>Generalizacao: tornar valores menos especificos</strong> Em vez de "idade = 23", usamos "idade = 20" (faixa de 10). Em vez de "Zip = 14965", usamos "Zip = 14000" (truncar digitos). Quanto mais generalizamos, maiores os grupos — mas perdemos utilidade.
+<pre>
+# Generalizacao em Python:
+df['Age'] = (df['Age'] // 20) * 20   # 23→20, 37→20, 61→60
+df['Zip'] = (df['Zip'] // 1000) * 1000  # 14965→14000
+</pre></li>
+    <li><strong>Suppression: remover outliers isolados</strong> Se apos generalizar ainda restam grupos com menos de k registros (ex: uma unica pessoa de 80+ no CEP 53000), removemos esses registros. Perder 1 de 32566 e impacto minimo.
+<pre>
+# Suppression em Python:
+group_sizes = df.groupby(["Zip", "Age"]).transform('size')
+df = df[group_sizes >= k]  # Remove grupos pequenos
+</pre></li>
+    <li><strong>Verificacao em Python</strong> A funcao verifica se todo grupo de quasi-identificadores tem pelo menos k registros:
+<pre>
+def check_k_anonymity(df, k, quasi_identifiers):
+    grouped = df.groupby(quasi_identifiers).size()
+    return bool((grouped >= k).all())
+# Atencao: >= k (nao >= k-1), pois o grupo inclui o proprio registro
+</pre></li>
+  </ol>
+
+  <div class="co co-c">
+    <strong>Limitacao da k-anonymity:</strong> Se todos no grupo de 70-79 em Caen tem Diabetes, a doenca e revelada mesmo com k = 10. Extensoes como <strong>l-diversity</strong> (valores sensiveis diversificados no grupo) e <strong>t-closeness</strong> (distribuicao do grupo proxima da global) tentam resolver isso, mas ainda nao oferecem garantias matematicas fortes como a Differential Privacy.
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!--  3. RANDOMISED RESPONSE                                    -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<section id="randresp">
+  <span class="sn sn-a">3</span>
+  <h2>Resposta Aleatoria: o primeiro mecanismo formal de privacidade</h2>
+
+  <p>O professor pergunta a cada aluno: <strong>"Voce colou na prova passada?"</strong> Quem colou vai mentir. Como estimar a proporcao real <span class="mi">p</span> sem comprometer ninguem?</p>
+
+  <h3 id="rr-formal">3.1 Formalizacao</h3>
+  <p>Classe de <span class="mi">N</span> alunos. Resposta verdadeira: X<sub>i</sub> = 1 (colou) ou 0 (nao colou). Proporcao real: p = (1/N) &sum; X<sub>i</sub> (desconhecida).</p>
+
+  <p>O mecanismo de <strong>Resposta Aleatoria</strong> com parametro <span class="mi">&gamma; &isin; [0, 1/2]</span>:</p>
+
+  <div class="mb" style="padding:24px 24px 55px">
+    <span style="color:var(--amber)">Y<sub>i</sub></span> = <span style="color:var(--blue)">X<sub>i</sub></span> com prob. <span style="color:var(--teal)">(1/2 + &gamma;)</span> &nbsp;|&nbsp; <span style="color:var(--red)">1 &minus; X<sub>i</sub></span> com prob. <span style="color:var(--coral)">(1/2 &minus; &gamma;)</span>
+    <div class="fb">
+      <div><div class="ft-box" style="border-top:2px solid var(--amber)"><span class="ft-label" style="color:var(--amber-d)">Y<sub>i</sub></span><br><span class="ft-desc">Resposta dada (observada)</span></div></div>
+      <div><div class="ft-box" style="border-top:2px solid var(--blue)"><span class="ft-label" style="color:var(--blue-d)">X<sub>i</sub></span><br><span class="ft-desc">Verdade (1=colou, 0=nao)</span></div></div>
+      <div><div class="ft-box" style="border-top:2px solid var(--teal)"><span class="ft-label" style="color:var(--teal-d)">1/2 + &gamma;</span><br><span class="ft-desc">Prob. de dizer a verdade</span></div></div>
+      <div><div class="ft-box" style="border-top:2px solid var(--coral)"><span class="ft-label" style="color:var(--coral-d)">1/2 &minus; &gamma;</span><br><span class="ft-desc">Prob. de inverter</span></div></div>
+    </div>
+  </div>
+
+  <div class="co co-a" style="padding:14px 20px">
+    <table style="width:100%;border-collapse:collapse;font-size:0.88rem">
+      <tr style="border-bottom:1px solid var(--border-l)">
+        <td style="padding:8px 0;font-weight:600;width:18%;color:var(--amber-d)">&gamma; = 0</td>
+        <td>P(verdade) = P(inversao) = 1/2. Resposta <strong>completamente aleatoria</strong>. Privacidade maxima, utilidade zero.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border-l)">
+        <td style="padding:8px 0;font-weight:600;color:var(--amber-d)">&gamma; = 1/2</td>
+        <td>P(verdade) = 1, P(inversao) = 0. Resposta <strong>exata</strong>. Utilidade maxima, privacidade zero.</td>
+      </tr>
+      <tr>
+        <td style="padding:8px 0;font-weight:600;color:var(--amber-d)">0 &lt; &gamma; &lt; 1/2</td>
+        <td><strong>Compromisso</strong>: "plausible deniability" — quem responde "sim" pode sempre dizer que o mecanismo inverteu.</td>
+      </tr>
+    </table>
+  </div>
+
+  <h3 id="rr-math">3.2 Demonstracoes matematicas</h3>
+
+  <div class="proof">
+    <div class="proof-title">Demonstracao 1: Calculo de E[Y<sub>i</sub>]</div>
+    <p>Y<sub>i</sub> e uma variavel de Bernoulli. Calculamos sua esperanca:</p>
+    <div class="step">E[Y<sub>i</sub>] = (1/2 + &gamma;) &middot; X<sub>i</sub> + (1/2 &minus; &gamma;) &middot; (1 &minus; X<sub>i</sub>)</div>
+    <div class="explain">Pela definicao do mecanismo: com prob. (1/2+&gamma;) respondemos X<sub>i</sub>, com prob. (1/2-&gamma;) respondemos 1-X<sub>i</sub>.</div>
+    <div class="step">= X<sub>i</sub>/2 + &gamma;X<sub>i</sub> + 1/2 &minus; &gamma; &minus; X<sub>i</sub>/2 + &gamma;X<sub>i</sub></div>
+    <div class="explain">Expandindo os termos: distribuimos cada probabilidade pelo valor correspondente.</div>
+    <div class="step">= 2&gamma;X<sub>i</sub> + 1/2 &minus; &gamma;</div>
+    <div class="explain">Simplificando: os termos X<sub>i</sub>/2 se cancelam, e os dois &gamma;X<sub>i</sub> se somam. Resultado: <strong>E[<span style="color:var(--amber)">Y<sub>i</sub></span>] = <span style="color:var(--teal)">2&gamma;</span><span style="color:var(--blue)">X<sub>i</sub></span> + <span style="color:var(--purple)">1/2 &minus; &gamma;</span></strong></div>
+  </div>
+
+  <div class="proof">
+    <div class="proof-title">Demonstracao 2: Estimador nao-viesado de X<sub>i</sub></div>
+    <p>Queremos inverter a relacao E[Y<sub>i</sub>] = 2&gamma;X<sub>i</sub> + 1/2 &minus; &gamma; para recuperar X<sub>i</sub>:</p>
+    <div class="step">E[Y<sub>i</sub>] &minus; (1/2 &minus; &gamma;) = 2&gamma;X<sub>i</sub></div>
+    <div class="explain">Subtraimos a constante (1/2 &minus; &gamma;) de ambos os lados.</div>
+    <div class="step">X<sub>i</sub> = (1/2&gamma;) &middot; (E[Y<sub>i</sub>] &minus; 1/2 + &gamma;) = (1/2&gamma;) &middot; (Y<sub>i</sub> + &gamma; &minus; 1/2)</div>
+    <div class="explain">Dividimos por 2&gamma;. Definimos o estimador: <strong>X&#772;<sub>i</sub> = (1/2&gamma;)(Y<sub>i</sub> + &gamma; &minus; 1/2)</strong></div>
+    <div class="step">E[X&#772;<sub>i</sub>] = (1/2&gamma;)(E[Y<sub>i</sub>] + &gamma; &minus; 1/2) = (1/2&gamma;)(2&gamma;X<sub>i</sub>) = X<sub>i</sub> = E[X<sub>i</sub>] ✓</div>
+    <div class="explain">O estimador e <strong>nao-viesado</strong>! Sua esperanca e exatamente o valor verdadeiro.</div>
+    <p style="margin-top:12px">Portanto o estimador da proporcao e:</p>
+    <div class="mb" style="padding:24px 24px 55px">
+    <span style="color:var(--red)">p&#770;</span> = <span style="color:var(--blue)">(1/N)</span> &sum;<sup>N</sup><sub>i=1</sub> <span style="color:var(--coral)">(1/2&gamma;)</span>(<span style="color:var(--amber)">Y<sub>i</sub></span> + <span style="color:var(--teal)">&gamma;</span> &minus; <span style="color:var(--purple)">1/2</span>)
+    <div class="fb">
+      <div><div class="ft-box" style="border-top:2px solid var(--red)"><span class="ft-label" style="color:var(--red-d)">p&#770;</span><br><span class="ft-desc">Estimativa da proporcao</span></div></div>
+      <div><div class="ft-box" style="border-top:2px solid var(--blue)"><span class="ft-label" style="color:var(--blue-d)">1/N</span><br><span class="ft-desc">Media sobre N alunos</span></div></div>
+      <div><div class="ft-box" style="border-top:2px solid var(--coral)"><span class="ft-label" style="color:var(--coral-d)">1/(2&gamma;)</span><br><span class="ft-desc">Correcao do bias do ruido</span></div></div>
+      <div><div class="ft-box" style="border-top:2px solid var(--amber)"><span class="ft-label" style="color:var(--amber-d)">Y<sub>i</sub></span><br><span class="ft-desc">Resposta ruidosa observada</span></div></div>
+    </div>
+  </div>
+    <div class="explain">E <strong>E[p&#770;] = p</strong> (a proporcao real). O estimador e nao-viesado para a media tambem! 👏</div>
+  </div>
+
+  <div class="proof">
+    <div class="proof-title">Demonstracao 3: Variancia do estimador</div>
+    <div class="step">V[p&#770;] = V[(1/N) &sum; (1/2&gamma;)(Y<sub>i</sub> + &gamma; &minus; 1/2)]</div>
+    <div class="explain">Pela definicao do estimador.</div>
+    <div class="step">= (1/4N&sup2;&gamma;&sup2;) &sum; V[Y<sub>i</sub>]</div>
+    <div class="explain">A constante (1/2&gamma;) sai ao quadrado, e os Y<sub>i</sub> sao independentes (cada aluno faz seu proprio coin flip).</div>
+    <div class="step">Y<sub>i</sub> segue Bernoulli &rArr; V[Y<sub>i</sub>] = p(1-p) &le; 1/4</div>
+    <div class="explain">A variancia de uma Bernoulli e maximizada em p = 1/2, onde V = 1/4.</div>
+    <div class="mb" style="padding:24px 24px 55px">
+    V[<span style="color:var(--red)">p&#770;</span>] &le; 1 / (<span style="color:var(--blue)">16</span> &middot; <span style="color:var(--green)">N</span> &middot; <span style="color:var(--teal)">&gamma;&sup2;</span>)
+    <div class="fb">
+      <div><div class="ft-box" style="border-top:2px solid var(--green)"><span class="ft-label" style="color:var(--green-d)">N</span><br><span class="ft-desc">Mais pessoas = menor variancia</span></div></div>
+      <div><div class="ft-box" style="border-top:2px solid var(--teal)"><span class="ft-label" style="color:var(--teal-d)">&gamma;&sup2;</span><br><span class="ft-desc">Mais verdade = menor variancia</span></div></div>
+      <div><div class="ft-box" style="border-top:2px solid var(--red)"><span class="ft-label" style="color:var(--red-d)">&gamma; &rarr; 0</span><br><span class="ft-desc">Variancia &rarr; &infin; (explode!)</span></div></div>
+    </div>
+  </div>
+    <div class="explain"><strong>Conclusao chave:</strong> A variancia decresce com N (mais pessoas = melhor estimativa) e com &gamma;&sup2; (mais verdade = menos variancia). Quando &gamma; &rarr; 0, a variancia explode (&rarr; &infin;).</div>
+  </div>
+
+  <h3 id="rr-viz">3.3 Simulacao: Resposta Aleatoria em acao</h3>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-a">Interativo</span><span class="ct">Mecanismo de Resposta Aleatoria</span></div>
+    <div class="sr"><span class="sl">&gamma; (ruido):</span><input type="range" min="0" max="50" value="25" step="1" id="rr-gamma" data-input="updateRR"><span class="sv" id="rr-gamma-val">0.25</span></div>
+    <div class="sr"><span class="sl">N alunos:</span><input type="range" min="20" max="500" value="100" step="10" id="rr-n" data-input="updateRR"><span class="sv" id="rr-n-val">100</span></div>
+    <div class="sr"><span class="sl">p real (cola):</span><input type="range" min="5" max="60" value="30" step="1" id="rr-p" data-input="updateRR"><span class="sv" id="rr-p-val">30%</span></div>
+    <div style="margin:12px 0"><canvas id="rr-canvas" width="500" height="260" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l)"></canvas></div>
+    <div class="mg c4">
+      <div class="m"><div class="mv" id="rr-true">—</div><div class="ml">p real</div></div>
+      <div class="m"><div class="mv" id="rr-raw">—</div><div class="ml">% respostas "sim"</div></div>
+      <div class="m"><div class="mv" id="rr-est">—</div><div class="ml">p&#770; estimado</div></div>
+      <div class="m"><div class="mv" id="rr-var">—</div><div class="ml">Var. (borne sup.)</div></div>
+    </div>
+    <p class="hn">Azul = real | Laranja = observado (ruidoso) | Verde = estimativa corrigida p&#770;</p>
+  </div>
+
+  <h3>&#128269; O que observar</h3>
+  <ol class="st st-a">
+    <li><strong>&gamma;=0.25, p=30%: as 3 barras</strong> A laranja (respostas brutas) difere da azul (realidade) por causa do ruido. Mas a verde (estimativa corrigida) se aproxima da azul. O estimador funciona!</li>
+    <li><strong>Baixe &gamma; para 0.05</strong> A laranja fica perto de 50% — quase nenhuma informacao. A verde flutua enormemente. Privacidade++, utilidade--.</li>
+    <li><strong>Aumente N para 500 com &gamma;=0.10</strong> Mesmo com muito ruido, a estimativa converge. Variancia decresce com 1/(N&gamma;&sup2;).</li>
+  </ol>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!--  4. DIFFERENTIAL PRIVACY                                   -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<section id="dp">
+  <span class="sn sn-p">4</span>
+  <h2>Differential Privacy: o framework matematico</h2>
+
+  <h3 id="dp-motiv">4.1 Motivacao: vulnerabilidade de queries repetidas</h3>
+
+  <p>Imagine um banco de dados com campos <code>name</code> e <code>salary</code>, acessivel apenas via a query <code>COUNT(*) WHERE &lt;cond&gt;</code>. Mesmo sem acesso direto ao salario, um atacante pode:</p>
+
+  <pre>
+-- Busca binaria: testar limiares ate achar o salario exato
+COUNT(*) WHERE name="Alice" AND salary &lt; 100000  → 1
+COUNT(*) WHERE name="Alice" AND salary &lt; 50000   → 0
+COUNT(*) WHERE name="Alice" AND salary &lt; 75000   → 1
+-- ... converge para o salario exato de Alice! [9]</pre>
+
+  <div class="co co-r">
+    <strong>Problema fundamental:</strong> Se um atacante pode fazer <strong>queries infinitas</strong> a um mecanismo com ruido de media zero, ele calcula a media das respostas ruidosas e, pela lei dos grandes numeros, o ruido se cancela, revelando o valor real. Por isso DP exige <strong>limitar o numero de queries</strong> ou usar um privacy budget que se degrada (composicao).
+  </div>
+
+  <h4>Perspectiva ML: modelos que vazam informacao</h4>
+  <p>Se treinarmos um modelo f<sub>&theta;</sub> em X, e depois em X' (que difere em um ponto), e &theta; muda significativamente, um adversario pode inferir qual ponto mudou. Solucao: adicionar ruido ao treino: <strong>&theta;<sub>private</sub> = &theta; + ruido</strong>.</p>
+
+  <h3 id="dp-def">4.2 Definicao formal de &epsilon;-DP</h3>
+
+  <div class="proof">
+    <div class="proof-title">Definicao: &epsilon;-Differential Privacy</div>
+    <p><strong>Ingredientes:</strong></p>
+    <div class="step">Dataset X = (x<sub>1</sub>, ..., x<sub>n</sub>)</div>
+    <div class="step">Mecanismo M : X &mapsto; Y tal que M(x) = &phi;(x, U) onde &phi; e deterministico e U uma semente aleatoria</div>
+    <div class="step">Datasets vizinhos: X, X' tais que d(X, X') = 1 (diferem em exatamente 1 registro)</div>
+    <div class="explain">Dois datasets sao "vizinhos" se sao identicos exceto por uma unica pessoa.</div>
+    <p style="margin-top:12px"><strong>Definicao:</strong> M e <strong>&epsilon;-DP</strong> para &epsilon; &ge; 0 se e somente se:</p>
+    <div class="step" style="border-color:var(--red);font-size:1.1rem;padding:12px 18px">P(M(X) &isin; S) &le; e<sup>&epsilon;</sup> &middot; P(M(X') &isin; S) &nbsp;&nbsp; &forall; X,X' vizinhos, &forall; S &sub; Y</div>
+    <div class="explain">A probabilidade de qualquer resultado e quase a mesma, independente de qual dos dois datasets vizinhos foi usado.</div>
+  </div>
+
+  <div class="proof">
+    <div class="proof-title">Interpretacao: a forma log-ratio</div>
+    <p>Tomando o logaritmo da definicao:</p>
+    <div class="step">P(M(X) &isin; S) &le; e<sup>&epsilon;</sup> &middot; P(M(X') &isin; S)</div>
+    <div class="step">log(P(M(X) &isin; S)) &le; &epsilon; + log(P(M(X') &isin; S))</div>
+    <div class="step">&minus;&epsilon; &le; log(P(M(X) &isin; S) / P(M(X') &isin; S)) &le; &epsilon;</div>
+    <div class="explain">O log-ratio das probabilidades e <strong>bornado por &epsilon; em ambos os sentidos</strong>. Um adversario vendo a saida de M nao consegue distinguir X de X' alem do fator e<sup>&epsilon;</sup>.</div>
+    <p style="margin-top:12px"><strong>Interpretacao dos extremos:</strong></p>
+    <div class="step">&epsilon; &rarr; 0: e<sup>0</sup> = 1 &rArr; P(M(X)) &asymp; P(M(X')). Indistinguiveis! Privacidade maxima.</div>
+    <div class="step">&epsilon; &gt;&gt; 1: e<sup>&epsilon;</sup> e grande &rArr; probabilidades podem divergir muito. Privacidade fraca.</div>
+    <div class="explain">Resumo: <strong>&epsilon; pequeno = muita privacidade, pouca utilidade</strong>. <strong>&epsilon; grande = pouca privacidade, muita utilidade</strong>. E o tradeoff fundamental.</div>
+  </div>
+
+  <h3 id="laplace">4.3 O Mecanismo de Laplace</h3>
+
+  <p>Para tornar qualquer funcao deterministica f &epsilon;-DP, basta adicionar ruido Laplaciano:</p>
+
+  <div class="mb">
+    M(X) = f(X) + Laplace(0, b) &nbsp; onde &nbsp; b = &Delta;f / &epsilon;
+  </div>
+
+  <div class="proof">
+    <div class="proof-title">Conceitos-chave explicados</div>
+    <p><strong>Sensibilidade &Delta;f:</strong> O quanto f pode mudar quando trocamos UM registro:</p>
+    <div class="step">&Delta;f = max<sub>X,X' vizinhos</sub> |f(X) &minus; f(X')|</div>
+    <div class="explain">Exemplo: para COUNT(*), trocar 1 pessoa muda o resultado em no maximo 1. Entao &Delta;f = 1.</div>
+    <div class="explain">Exemplo: para MEAN(salary), se salarios vao de 0 a 200K e temos N pessoas, &Delta;f = 200000/N.</div>
+    <p style="margin-top:12px"><strong>Distribuicao de Laplace:</strong></p>
+    <div class="step">laplace(x | b) = (1/2b) &middot; exp(&minus;|x|/b)</div>
+    <div class="explain">Uma distribuicao simetrica centrada em 0 com "caudas pesadas". O parametro b (escala) controla a largura: b maior = mais ruido = mais privacidade.</div>
+    <p style="margin-top:12px"><strong>Por que funciona:</strong> b = &Delta;f/&epsilon; garante que o ruido e grande o suficiente para "esconder" qualquer mudanca de 1 registro. Quanto mais f varia (&Delta;f grande) ou quanto mais privacidade queremos (&epsilon; pequeno), mais ruido adicionamos.</p>
+  </div>
+
+  <pre>
+# Implementacao em Python:
+def differentially_private_output(query_output, epsilon, sensitivity):
+    scale = sensitivity / epsilon
+    return query_output + np.random.laplace(loc=0, scale=scale)
+
+# Exemplo: count query (sensibilidade = 1)
+real_count = len(df[df['Target'] == '<=50K'])
+dp_count = differentially_private_output(real_count, epsilon=1, sensitivity=1)</pre>
+
+  <h3 id="dp-viz">4.4 Simulacoes interativas</h3>
+
+  <h4>Distribuicao de Laplace: efeito da escala</h4>
+  <div class="ic">
+    <div class="ch"><span class="cb cb-c">Interativo</span><span class="ct">PDF de Laplace para diferentes escalas b</span></div>
+    <div class="sr"><span class="sl">Escala b:</span><input type="range" min="5" max="80" value="20" step="1" id="lap-b" data-input="updateLap"><span class="sv" id="lap-b-val">2.0</span></div>
+    <div style="margin:12px 0"><canvas id="lap-canvas" width="500" height="220" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l)"></canvas></div>
+    <div class="mg c3">
+      <div class="m"><div class="mv" id="lap-peak">—</div><div class="ml">Pico = 1/(2b)</div></div>
+      <div class="m"><div class="mv" id="lap-mean">0</div><div class="ml">Media</div></div>
+      <div class="m"><div class="mv" id="lap-varv">—</div><div class="ml">Variancia = 2b&sup2;</div></div>
+    </div>
+    <p class="hn">b maior = distribuicao mais larga = mais ruido = mais privacidade</p>
+  </div>
+
+  <h3>&#128269; O que observar na Laplace</h3>
+  <ol class="st st-c">
+    <li><strong>b=1.0 (pouco ruido)</strong> A curva e alta e concentrada em 0. Valores proximos do real sao muito provaveis. Privacidade fraca, utilidade alta.</li>
+    <li><strong>Aumente b para 4-5</strong> A curva se achatou e as caudas ficaram pesadas. Mais privacidade, respostas mais imprecisas. Compare com as curvas de referencia (cinza).</li>
+    <li><strong>b=8 (muito ruido)</strong> Curva quase plana. O ruido domina — a query e quase inutil mas a privacidade e excelente. Note que a variancia (2b&sup2;) cresce quadraticamente!</li>
+    <li><strong>Relacao com &epsilon;</strong> Lembre: b = &Delta;f/&epsilon;. Se &epsilon;=1 e &Delta;f=1, entao b=1. Se &epsilon;=0.1, b=10. Epsilon pequeno → b grande → curva larga → mais privacidade.</li>
+  </ol>
+
+  <h4>Comparando P(&theta;|X) vs P(&theta;|X') sobre datasets vizinhos</h4>
+  <div class="ic">
+    <div class="ch"><span class="cb cb-p">Interativo</span><span class="ct">Distinguibilidade entre datasets vizinhos</span></div>
+    <div class="sr"><span class="sl">Epsilon (&epsilon;):</span><input type="range" min="1" max="50" value="10" step="1" id="dp-eps" data-input="updateDP"><span class="sv" id="dp-eps-val">1.0</span></div>
+    <div class="sr"><span class="sl">Distancia &theta;:</span><input type="range" min="0" max="40" value="15" step="1" id="dp-dist" data-input="updateDP"><span class="sv" id="dp-dist-val">1.5</span></div>
+    <div style="margin:12px 0"><canvas id="dp-canvas" width="500" height="250" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l)"></canvas></div>
+    <div class="mg c3">
+      <div class="m"><div class="mv" id="dp-overlap">—</div><div class="ml">Sobreposicao</div></div>
+      <div class="m"><div class="mv" id="dp-priv">—</div><div class="ml">Nivel de privacidade</div></div>
+      <div class="m"><div class="mv" id="dp-scale">—</div><div class="ml">Escala do ruido (b)</div></div>
+    </div>
+    <p class="hn">Azul = P(&theta;<sub>private</sub>|X), Verde tracejado = P(&theta;<sub>private</sub>|X'). Quanto mais sobrepostas, mais privacidade.</p>
+  </div>
+
+  <h3>&#128269; O que observar nas distribuicoes vizinhas</h3>
+  <ol class="st st-p">
+    <li><strong>&epsilon;=1.0 (privacidade forte)</strong> As duas curvas se sobrepõem quase completamente (~85%+). Um adversario vendo &theta;<sub>private</sub> nao distingue se veio de X ou X'. A escala b e grande → muito ruido.</li>
+    <li><strong>Aumente &epsilon; para 3-5 (privacidade fraca)</strong> As curvas se separam. O adversario consegue "chutar" qual dataset foi usado. Sobreposicao cai para 40-60%.</li>
+    <li><strong>Aumente a distancia &theta;</strong> Se os parametros aprendidos sao naturalmente distantes (o ponto alterado e influente), as curvas se separam mais. Precisamos de <strong>menor &epsilon;</strong> ou <strong>gradient clipping</strong> para limitar essa distancia.</li>
+    <li><strong>Analogia com Resp. Aleatoria</strong> &epsilon; aqui = &gamma; la. &epsilon; pequeno = &gamma; pequeno = muito ruido = privacidade. O tradeoff e universal.</li>
+  </ol>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!--  5. DP-SGD                                                 -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<section id="dpml">
+  <span class="sn sn-t">5</span>
+  <h2>Differential Privacy para Deep Learning: DP-SGD</h2>
+
+  <h3 id="logreg">5.1 Contexto: regressao logistica e gradient descent</h3>
+  <p>No TP, treinamos um classificador logistico f<sub>&theta;</sub> que prediz y &isin; {0,1} a partir de x &isin; R<sup>d</sup>:</p>
+
+  <div class="mb" style="padding:24px 24px 55px">
+    <span style="color:var(--purple)">f<sub>&theta;</sub></span>(<span style="color:var(--blue)">x</span>) = <span style="color:var(--coral)">&sigma;</span>(<span style="color:var(--teal)">&sum; w<sub>i</sub> &middot; x<sup>i</sup></span>) &nbsp; onde &nbsp; <span style="color:var(--coral)">&sigma;</span>(z) = 1/(1 + e<sup>&minus;z</sup>)
+    <div class="fb">
+      <div><div class="ft-box" style="border-top:2px solid var(--purple)"><span class="ft-label" style="color:var(--purple-d)">f<sub>&theta;</sub></span><br><span class="ft-desc">Modelo (prediz P(y=1|x))</span></div></div>
+      <div><div class="ft-box" style="border-top:2px solid var(--blue)"><span class="ft-label" style="color:var(--blue-d)">x</span><br><span class="ft-desc">Entrada (features)</span></div></div>
+      <div><div class="ft-box" style="border-top:2px solid var(--coral)"><span class="ft-label" style="color:var(--coral-d)">&sigma; (sigmoid)</span><br><span class="ft-desc">Comprime para [0,1]</span></div></div>
+      <div><div class="ft-box" style="border-top:2px solid var(--teal)"><span class="ft-label" style="color:var(--teal-d)">&sum; w<sub>i</sub>x<sup>i</sup></span><br><span class="ft-desc">Produto escalar pesos·features</span></div></div>
+    </div>
+  </div>
+
+  <div class="proof">
+    <div class="proof-title">Por que f<sub>&theta;</sub>(x) representa uma probabilidade?</div>
+    <p>O modelo de regressao logistica calcula:</p>
+    <div class="step"><span style="color:var(--purple)">f<sub>&theta;</sub></span>(<span style="color:var(--blue)">x</span>) = <span style="color:var(--coral)">&sigma;</span>(<span style="color:var(--teal)">&sum; w<sub>i</sub> &middot; x<sup>i</sup></span>)</div>
+    <div class="explain">Primeiro, o <strong>produto escalar</strong> <span style="color:var(--teal)">&sum; w<sub>i</sub> &middot; x<sup>i</sup></span> = w<sub>1</sub>x<sup>1</sup> + w<sub>2</sub>x<sup>2</sup> + ... + w<sub>d</sub>x<sup>d</sup> produz um numero real z &isin; (&minus;&infin;, +&infin;). Esse valor pode ser qualquer coisa — positivo, negativo, enorme.</div>
+    <div class="step"><span style="color:var(--coral)">&sigma;</span>(z) = 1 / (1 + e<sup>&minus;z</sup>) &nbsp;&nbsp;&nbsp; &sigma; : &#8477; &rarr; (0, 1)</div>
+    <div class="explain">A <strong>sigmoid</strong> <span style="color:var(--coral)">&sigma;</span> "comprime" esse valor real para o intervalo <strong>(0, 1)</strong>. Isso e crucial: como a saida esta entre 0 e 1, podemos interpreta-la como uma probabilidade!</div>
+    <p style="margin-top:12px">Entao definimos:</p>
+    <div class="mb" style="padding:24px 24px 55px">
+      <span style="color:var(--purple)">f<sub>&theta;</sub></span>(<span style="color:var(--blue)">x</span>) = <span style="color:var(--green)">P<sub>&theta;</sub>(y = 1 | x)</span>
+      <div class="fb">
+        <div><div class="ft-box" style="border-top:2px solid var(--purple)"><span class="ft-label" style="color:var(--purple-d)">f<sub>&theta;</sub>(x)</span><br><span class="ft-desc">Saida do modelo (entre 0 e 1)</span></div></div>
+        <div><div class="ft-box" style="border-top:2px solid var(--green)"><span class="ft-label" style="color:var(--green-d)">P<sub>&theta;</sub>(y=1|x)</span><br><span class="ft-desc">Probabilidade de pertencer a classe 1, dado x</span></div></div>
+      </div>
+    </div>
+    <div class="explain"><strong>Como interpretar:</strong> Se f<sub>&theta;</sub>(x) = 0.85, o modelo diz "85% de chance de y=1". Se f<sub>&theta;</sub>(x) = 0.12, diz "12% de chance de y=1" (ou seja, 88% de chance de y=0).</div>
+    <p style="margin-top:12px">Os <strong>tres comportamentos-chave</strong> da sigmoid:</p>
+    <div class="step">Se <span style="color:var(--teal)">&sum; w<sub>i</sub>x<sup>i</sup></span> &gt;&gt; 0 &nbsp;&rArr;&nbsp; <span style="color:var(--coral)">&sigma;</span> &rarr; 1 &nbsp;&rArr;&nbsp; <span style="color:var(--green)">P(y=1|x) &asymp; 1</span></div>
+    <div class="explain">Produto escalar grande e positivo: o modelo esta <strong>confiante</strong> de que y=1.</div>
+    <div class="step">Se <span style="color:var(--teal)">&sum; w<sub>i</sub>x<sup>i</sup></span> &lt;&lt; 0 &nbsp;&rArr;&nbsp; <span style="color:var(--coral)">&sigma;</span> &rarr; 0 &nbsp;&rArr;&nbsp; <span style="color:var(--green)">P(y=1|x) &asymp; 0</span></div>
+    <div class="explain">Produto escalar grande e negativo: o modelo esta <strong>confiante</strong> de que y=0.</div>
+    <div class="step">Se <span style="color:var(--teal)">&sum; w<sub>i</sub>x<sup>i</sup></span> &asymp; 0 &nbsp;&rArr;&nbsp; <span style="color:var(--coral)">&sigma;</span> &asymp; 0.5 &nbsp;&rArr;&nbsp; <span style="color:var(--green)">P(y=1|x) &asymp; 50%</span></div>
+    <div class="explain">Produto escalar perto de zero: o modelo esta <strong>indeciso</strong>, probabilidade de cara ou coroa.</div>
+    <p style="margin-top:12px"><strong>Para classificar:</strong> Usamos o limiar 0.5. Se f<sub>&theta;</sub>(x) &gt; 0.5, predizemos y=1; senao, y=0. Os pesos <span style="color:var(--teal)">w<sub>1</sub>,...,w<sub>d</sub></span> sao os parametros &theta; que aprendemos durante o treino, ajustando-os para que o produto escalar tenha o <strong>mesmo sinal</strong> que o label y que queremos prever.</p>
+  </div>
+
+  <p>Para treinar &theta;, minimizamos a <strong>binary cross-entropy loss</strong>:</p>
+
+  <div class="proof">
+    <div class="proof-title">Loss function e gradiente</div>
+    <div class="step">loss(f<sub>&theta;</sub>(x<sub>i</sub>), y<sub>i</sub>) = &minus;y<sub>i</sub> log(f<sub>&theta;</sub>(x<sub>i</sub>)) &minus; (1&minus;y<sub>i</sub>) log(1&minus;f<sub>&theta;</sub>(x<sub>i</sub>))</div>
+    <div class="explain"><strong>Se y<sub>i</sub>=1:</strong> loss = &minus;log(f<sub>&theta;</sub>(x<sub>i</sub>)). Minimizar &rArr; f<sub>&theta;</sub> &rarr; 1 (predizer y=1 corretamente).</div>
+    <div class="explain"><strong>Se y<sub>i</sub>=0:</strong> loss = &minus;log(1&minus;f<sub>&theta;</sub>(x<sub>i</sub>)). Minimizar &rArr; f<sub>&theta;</sub> &rarr; 0 (predizer y=0 corretamente).</div>
+    <p style="margin-top:12px"><strong>Gradiente</strong> (o que usamos para atualizar &theta;):</p>
+    <div class="step">&nabla;<sub>&theta;</sub> loss = x<sub>i</sub> &middot; (f<sub>&theta;</sub>(x<sub>i</sub>) &minus; y<sub>i</sub>)</div>
+    <div class="explain">Se a predicao esta longe do alvo, o gradiente e grande &rArr; &theta; muda muito. Se esta perto, o gradiente e pequeno.</div>
+    <p style="margin-top:12px"><strong>Gradient Descent:</strong> a cada iteracao, calculamos o gradiente medio sobre todo o dataset e atualizamos:</p>
+    <div class="step">&theta;<sub>t+1</sub> = &theta;<sub>t</sub> &minus; &alpha; &middot; (1/N) &sum;<sub>i</sub> &nabla;<sub>&theta;</sub> loss(f<sub>&theta;</sub>(x<sub>i</sub>), y<sub>i</sub>)</div>
+    <div class="explain">&alpha; e o learning rate. Repetimos ate convergencia.</div>
+  </div>
+
+  <pre>
+# Gradient descent basico (do TP):
+def gradient_descent(iterations, lr, X_train, y_train):
+    theta = initialise_params()
+    for it in range(iterations):
+        grads = np.array([gradient(theta, X_train[i], y_train[i]) 
+                          for i in range(X_train.shape[0])])
+        average_gradient = np.mean(grads, axis=0)
+        theta = theta - lr * average_gradient
+    return theta</pre>
+
+  <h3 id="dpsgd-algo">5.2 DP-SGD: clip, ruido e algoritmo</h3>
+
+  <p>Para tornar o gradient descent <strong>&epsilon;-DP</strong>, adicionamos dois ingredientes: <strong>gradient clipping</strong> e <strong>ruido Laplaciano</strong>.</p>
+
+  <div class="proof">
+    <div class="proof-title">Passo 1: Gradient Clipping</div>
+    <p>Problema: sem clipping, um unico outlier pode dominar o gradiente &rArr; vazamento de informacao.</p>
+    <div class="step"><span style="color:var(--teal)">clip</span>(<span style="color:var(--blue)">g</span>, <span style="color:var(--red)">K</span>) = <span style="color:var(--blue)">g</span> &middot; min(1, <span style="color:var(--red)">K</span> / <span style="color:var(--purple)">||g||<sub>2</sub></span>)</div>
+    <div class="explain"><strong>Se ||g|| &le; K:</strong> mantem o gradiente intacto (min(1, K/||g||) = 1).</div>
+    <div class="explain"><strong>Se ||g|| &gt; K:</strong> escala o gradiente para ter norma exatamente K (min(1, K/||g||) = K/||g|| &lt; 1).</div>
+    <p style="margin-top:10px"><strong>Efeito:</strong> Apos o clipping, todo gradiente individual tem ||g&#771;<sub>i</sub>|| &le; K. Isso borna a influencia maxima de qualquer amostra: a <strong>sensibilidade</strong> do gradiente medio e &Delta; = K/N.</p>
+  </div>
+
+  <div class="proof">
+    <div class="proof-title">Passo 2: Adicionar ruido calibrado</div>
+    <div class="step">sensibilidade = K / N (influencia maxima de 1 amostra no gradiente medio)</div>
+    <div class="step">ruido = Laplace(0, sensibilidade/&epsilon;) por dimensao de &theta;</div>
+    <div class="step">&theta;<sub>t+1</sub> = &theta;<sub>t</sub> &minus; &alpha; &middot; ((1/N) &sum; clip(g<sub>i</sub>, K) + ruido)</div>
+    <div class="explain">O ruido e proporcional a K (mais clipping = mais ruido) e inversamente proporcional a &epsilon; (mais privacidade = mais ruido).</div>
+  </div>
+
+  <pre>
+# Implementacao completa (do TP):
+def clip_gradient(grad, threshold):
+    norm = np.linalg.norm(grad)
+    if norm > threshold:
+        grad = grad * (threshold / norm)
+    return grad
+
+def epsilon_dp_gradient_descent(iterations, lr, epsilon, threshold, X_train, y_train):
+    theta = initialise_params()
+    n = X_train.shape[0]
+    for it in range(iterations):
+        grads = np.array([gradient(theta, X_train[i], y_train[i]) for i in range(n)])
+        clipped = np.array([clip_gradient(g, threshold) for g in grads])
+        avg_grad = np.mean(clipped, axis=0)
+        sensitivity = threshold / n
+        noise = np.random.laplace(0, sensitivity/epsilon, size=theta.shape)
+        theta = theta - lr * (avg_grad + noise)
+    return theta</pre>
+
+  <h3 id="dpsgd-tradeoff">5.3 O tradeoff &epsilon; vs accuracy</h3>
+
+  <div class="co co-t">
+    <strong>Experiencia do TP:</strong> Testando diferentes valores de &epsilon; com 30 iteracoes e threshold=1:
+    <table style="width:100%;border-collapse:collapse;margin-top:10px;font-size:0.85rem">
+      <tr style="border-bottom:1px solid var(--border-l)"><td style="padding:4px 0;width:30%"><strong>&epsilon; = 0.01</strong></td><td>~50% accuracy (aleatorio). Muito ruido, modelo nao aprende nada.</td></tr>
+      <tr style="border-bottom:1px solid var(--border-l)"><td style="padding:4px 0"><strong>&epsilon; = 0.1 - 1</strong></td><td>60-70% accuracy. Privacidade forte, utilidade moderada.</td></tr>
+      <tr style="border-bottom:1px solid var(--border-l)"><td style="padding:4px 0"><strong>&epsilon; = 5 - 10</strong></td><td>75-80% accuracy. Privacidade fraca, se aproxima do nao-privado.</td></tr>
+      <tr><td style="padding:4px 0"><strong>&epsilon; = 100+</strong></td><td>~83% (quase igual ao baseline sem DP). Ruido desprezivel.</td></tr>
+    </table>
+  </div>
+
+  <pre>
+# Testar o tradeoff (Cell 69 do TP):
+epsilons = [0.01, 0.1, 0.5, 1, 5, 10, 50, 100]
+for eps in epsilons:
+    dp_theta = epsilon_dp_gradient_descent(30, 0.1, eps, 1, X_train, y_train)
+    acc = custom_accuracy(dp_theta, X_test, y_test)
+    print(f"epsilon={eps:>6} -> accuracy={acc:.4f}")</pre>
+
+  <div class="co co-b">
+    <strong>Analogia com a Resposta Aleatoria:</strong> &epsilon; no DP-SGD e o equivalente de &gamma; na Resposta Aleatoria. &epsilon; pequeno = &gamma; pequeno = muito ruido = alta privacidade, baixa utilidade. O tradeoff e universal em toda a teoria de DP.
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!--  6. WRAP-UP                                                -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<section id="resumo">
+  <span class="sn sn-pk">6</span>
+  <h2>Resumo e questoes para reflexao</h2>
+
+  <ol class="st st-pk">
+    <li><strong>Privacidade e um tema serio e em evolucao</strong> GDPR, European AI Act — os direitos e deveres estao cada vez mais definidos. Empresas que ignoram privacidade correm riscos juridicos e reputacionais.</li>
+    <li><strong>Protecoes ingenuas falham</strong> De-anonimizacao, ataques de linkage, hashing reversivel, memorizacao de modelos — cada "solucao" simples foi contornada. Privacidade requer frameworks matematicos.</li>
+    <li><strong>Differential Privacy e o framework rigoroso</strong> Usa ruido calibrado (Laplace) para esconder informacoes individuais enquanto preserva tendencias globais. O parametro &epsilon; quantifica o tradeoff.</li>
+    <li><strong>DP-SGD aplica DP a deep learning</strong> Gradient clipping (bornar a influencia de cada amostra) + ruido Laplaciano nos gradientes. O custo e uma reducao na precisao proporcional a 1/&epsilon;.</li>
+    <li><strong>O tradeoff e universal</strong> &gamma; na Resposta Aleatoria, &epsilon; no DP, K/&epsilon; no DP-SGD — todos expressam o mesmo compromisso: privacidade vs utilidade. Mais dados (N grande) permitem mais ruido sem perder utilidade.</li>
+  </ol>
+
+  <h3>Questoes para reflexao</h3>
+  <div class="co co-b">
+    <strong>1.</strong> Explique por que a pseudo-anonimizacao nao garante privacidade. De o exemplo de Annie Mone do TP.<br><br>
+    <strong>2.</strong> Demonstre passo a passo por que E[p&#770;] = p no mecanismo de Resposta Aleatoria. O que acontece com V[p&#770;] quando &gamma; &rarr; 0?<br><br>
+    <strong>3.</strong> Na definicao de &epsilon;-DP, por que usamos e<sup>&epsilon;</sup> (exponencial) e nao simplesmente 1+&epsilon;? Dica: pense na propriedade de composicao.<br><br>
+    <strong>4.</strong> No DP-SGD, explique o que acontece se K (threshold de clipping) for muito grande vs muito pequeno.<br><br>
+    <strong>5.</strong> Se um atacante tem acesso infinito a queries DP com &epsilon;=1, ele pode recuperar o valor real? Explique usando o teorema de composicao.<br><br>
+    <strong>6.</strong> Compare os tradeoffs: &sigma; vs clean accuracy (Randomized Smoothing, Cap. 8) com &epsilon; vs model accuracy (DP-SGD, Cap. 9). Quais as similaridades estruturais?
+  </div>
+</section>
+
+<footer class="ft">
+  <p>Baseado nos slides de Benjamin Sykes — Security of AI, Chap 9 — ENSICAEN (Mars 2026)</p>
+  <p>Referências: [1] atockar 2014 (NYC Taxi) · [2,14] Carlini et al. (Diffusion) · [3] Carlini et al. (LLM) · [4] Douriez et al. (TLC) · [5] Dwork & Roth 2013 · [6] Fredrikson et al. 2015 · [7] Narayanan & Shmatikov 2008 · [8] Near & Abuah 2022 · [9] PyTorch Blog DP-SGD · [10] Shokri et al. 2017 · [11] Suliman & Leith 2023 · [12] Sweeney 2002 · [13] Sweeney 2000 · [15] Webster et al. 2019</p>
+</footer>
+</div>
