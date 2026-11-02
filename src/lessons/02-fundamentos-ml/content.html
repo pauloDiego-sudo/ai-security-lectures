@@ -1,0 +1,359 @@
+<div class="bar" id="progress"></div>
+<nav><div class="ni">
+    <a href="./" class="nl" data-route="/">← Índice</a>
+  <a href="#intro" class="nl on" data-s="intro">Intro</a>
+  <a href="#sl" class="nl" data-s="sl">1. Aprendizado</a>
+  <a href="#nn" class="nl" data-s="nn">2. Redes neurais</a>
+  <a href="#geo" class="nl" data-s="geo">3. Geometria</a>
+  <a href="#opt" class="nl" data-s="opt">4. Otimizacao</a>
+  <a href="#threats" class="nl" data-s="threats">5. Ameacas</a>
+  <a href="#tax" class="nl" data-s="tax">6. Taxonomia</a>
+</div></nav>
+
+<div class="pg">
+
+<header class="hero" id="intro">
+  <div class="ey">Security of AI — Chapitre 2</div>
+  <h1>Fundamentos matematicos e vulnerabilidades tecnicas do ML</h1>
+  <p class="hs">Como modelos de machine learning aprendem, onde residem suas vulnerabilidades matematicas, e como atacantes exploram cada componente — do dataset aos gradientes. Baseado nos slides de Frederic Jurie, ENSICAEN (2026).</p>
+</header>
+
+<section>
+  <div class="co co-b"><strong>Filosofia do curso:</strong> "You cannot secure what you do not understand." Seguranca em IA e o estudo de como otimizacao matematica se comporta sob condicoes adversariais. Antes de defender, precisamos entender o que estamos defendendo.</div>
+
+  <nav class="toc">
+    <div class="toc-t">Sumario</div>
+    <a href="#sl">1. O framework de aprendizado supervisionado</a>
+    <a href="#sl-data" class="in">1.1 Espaco de dados e distribuicoes</a>
+    <a href="#sl-poison" class="in">1.2 Ameaca: data poisoning</a>
+    <a href="#nn">2. Modelos parametricos e redes neurais</a>
+    <a href="#nn-viz" class="in">2.1 Simulacao: neuronio artificial interativo</a>
+    <a href="#geo">3. A geometria do aprendizado</a>
+    <a href="#geo-db" class="in">3.1 Fronteiras de decisao — simulacao</a>
+    <a href="#geo-manifold" class="in">3.2 A hipotese do manifold</a>
+    <a href="#geo-evasion" class="in">3.3 Ameaca: ataques de evasao (FGSM)</a>
+    <a href="#opt">4. Aprendizado como otimizacao</a>
+    <a href="#opt-loss" class="in">4.1 Loss landscape interativo</a>
+    <a href="#opt-gd" class="in">4.2 Gradient descent — simulacao</a>
+    <a href="#opt-dual" class="in">4.3 O gradiente de duas perspectivas</a>
+    <a href="#threats">5. As cinco ameacas fundamentais</a>
+    <a href="#t-poison" class="in">5.1 Data poisoning</a>
+    <a href="#t-evasion" class="in">5.2 Evasion (adversarial examples)</a>
+    <a href="#t-backdoor" class="in">5.3 Backdoor attacks</a>
+    <a href="#t-inversion" class="in">5.4 Model inversion</a>
+    <a href="#t-stealing" class="in">5.5 Model stealing</a>
+    <a href="#tax">6. Taxonomia de riscos matematicos</a>
+  </nav>
+</section>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!--  1. SUPERVISED LEARNING FRAMEWORK                  -->
+<!-- ══════════════════════════════════════════════════ -->
+<section id="sl">
+  <span class="sn sn-b">1</span>
+  <h2>O framework de aprendizado supervisionado</h2>
+
+  <p>Toda seguranca de IA comeca aqui: entender <em>como</em> um modelo aprende. A programacao tradicional segue o caminho <strong>dados + programa → saida</strong>. Machine learning inverte: <strong>dados + saida esperada → programa</strong>. O "programa" aprendido e exatamente a superficie de ataque que um adversario explora.</p>
+
+  <h3 id="sl-data">Espaco de dados e distribuicoes</h3>
+  <p>Assumimos uma distribuicao de probabilidade desconhecida <span class="mi">D</span> sobre:</p>
+
+  <div class="mg c2">
+    <div class="m" style="border-left:3px solid var(--blue);border-radius:0 var(--r) var(--r) 0"><div class="mv" style="font-size:1rem;color:var(--blue)">Espaco de entrada X ⊂ R<sup>d</sup></div><div class="ml">Vetores de features (pixels, embeddings...)</div></div>
+    <div class="m" style="border-left:3px solid var(--purple);border-radius:0 var(--r) var(--r) 0"><div class="mv" style="font-size:1rem;color:var(--purple)">Espaco de saida Y</div><div class="ml">Labels (classes) ou valores continuos</div></div>
+  </div>
+
+  <p>O <strong>training set</strong> <span class="mi">S</span> = {(x<sub>i</sub>, y<sub>i</sub>)}<sup>n</sup><sub>i=1</sub> e uma amostra i.i.d. de <span class="mi">D</span>. A tarefa do aprendizado e encontrar uma funcao <span class="mi">h: X → Y</span> que funcione bem em amostras <em>nao vistas</em> de <span class="mi">D</span> — isso e <strong>generalizacao</strong>.</p>
+
+  <div class="mb">
+    <span class="mi">S</span> = {(x<sub>1</sub>, y<sub>1</sub>), (x<sub>2</sub>, y<sub>2</sub>), ..., (x<sub>n</sub>, y<sub>n</sub>)} &nbsp; i.i.d. ~ <span class="mi">D</span>
+  </div>
+
+  <div class="co co-r" id="sl-poison">
+    <strong>Contexto de seguranca — Data Poisoning:</strong> Se o dataset <span class="mi">S</span> nao e representativo de <span class="mi">D</span>, ou se foi <strong>manipulado</strong>, a funcao aprendida <span class="mi">h</span> sera fundamentalmente falha. Um atacante que consegue injetar dados maliciosos no training set pode corromper o modelo inteiro — sem tocar em uma unica linha de codigo. A degradacao pode ser gradual e invisivel pelas metricas padrao.
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!--  2. NEURAL NETWORKS                                -->
+<!-- ══════════════════════════════════════════════════ -->
+<section id="nn">
+  <span class="sn sn-p">2</span>
+  <h2>Modelos parametricos e redes neurais</h2>
+
+  <p>Restringimos nossa busca a uma <strong>classe de hipoteses</strong> <span class="mi">H</span> definida por parametros &theta; &isin; R<sup>p</sup>.</p>
+
+  <h4>Modelo linear</h4>
+  <div class="mb">f<sub>&theta;</sub>(x) = &theta;<sup>T</sup>x + b</div>
+  <p>Simples, interpretavel, mas so consegue separar classes com um hiperplano. Insuficiente para problemas complexos como reconhecimento de imagens.</p>
+
+  <h4>Rede neural profunda (DNN)</h4>
+  <div class="mb">f<sub>&theta;</sub>(x) = &sigma;<sub>L</sub>(W<sub>L</sub> &middot; &sigma;<sub>L-1</sub>(... &sigma;<sub>1</sub>(W<sub>1</sub>x + b<sub>1</sub>) ...) + b<sub>L</sub>)</div>
+  <p>Uma composicao aninhada de transformacoes lineares (W<sub>i</sub>) e nao-linearidades (&sigma;<sub>i</sub> — funcoes de ativacao como ReLU, sigmoid, tanh). Cada camada extrai features progressivamente mais abstratas. A <strong>alta dimensionalidade</strong> de &theta; (milhoes a bilhoes de parametros) e a <strong>nao-linearidade</strong> de &sigma; permitem fronteiras de decisao extremamente flexiveis.</p>
+
+  <div class="co co-p"><strong>Contexto de seguranca:</strong> Espacos de alta dimensao contem "bolsoes" onde o modelo se comporta de forma inesperada — regioes do espaco de entrada que nunca foram vistas no treino mas onde o modelo tem alta confianca em predicoes erradas. Esses bolsoes sao exatamente o que ataques de evasao exploram.</div>
+
+  <h3 id="nn-viz">Neuronio artificial interativo</h3>
+  <p>Um unico neuronio computa a soma ponderada das entradas, adiciona um bias e aplica uma funcao de ativacao. A visualizacao abaixo mostra como os pesos e o bias mudam a saida.</p>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-p">Interativo</span><span class="ct">Neuronio artificial — ajuste pesos e veja a saida</span></div>
+    <div class="sr"><span class="sl">x<sub>1</sub> =</span><input type="range" min="-10" max="10" value="5" step="1" id="x1" data-input="updateNeuron"><span class="sv" id="x1v">5</span></div>
+    <div class="sr"><span class="sl">x<sub>2</sub> =</span><input type="range" min="-10" max="10" value="3" step="1" id="x2" data-input="updateNeuron"><span class="sv" id="x2v">3</span></div>
+    <div class="sr"><span class="sl">w<sub>1</sub> =</span><input type="range" min="-20" max="20" value="7" step="1" id="w1" data-input="updateNeuron"><span class="sv" id="w1v">0.7</span></div>
+    <div class="sr"><span class="sl">w<sub>2</sub> =</span><input type="range" min="-20" max="20" value="-4" step="1" id="w2" data-input="updateNeuron"><span class="sv" id="w2v">-0.4</span></div>
+    <div class="sr"><span class="sl">bias =</span><input type="range" min="-20" max="20" value="0" step="1" id="nb" data-input="updateNeuron"><span class="sv" id="nbv">0.0</span></div>
+    <div class="br">
+      <button class="bt on" data-click="setAct" data-arg="relu" id="act-relu">ReLU</button>
+      <button class="bt" data-click="setAct" data-arg="sigmoid" id="act-sigmoid">Sigmoid</button>
+      <button class="bt" data-click="setAct" data-arg="tanh" id="act-tanh">Tanh</button>
+    </div>
+    <div class="mg c3">
+      <div class="m"><div class="mv" id="n-z">—</div><div class="ml">z = w<sub>1</sub>x<sub>1</sub> + w<sub>2</sub>x<sub>2</sub> + b</div></div>
+      <div class="m"><div class="mv" id="n-a">—</div><div class="ml">&sigma;(z) — saida</div></div>
+      <div class="m"><div class="mv" id="n-g">—</div><div class="ml">&sigma;'(z) — gradiente</div></div>
+    </div>
+    <p class="hn">Observe: com ReLU, z negativo produz saida 0 (neuronio "morto"). Com sigmoid, z grande satura em 1 (gradiente ~0 — vanishing gradient).</p>
+  </div>
+
+  <h3>O que observar na simulacao</h3>
+  <ol class="st st-p">
+    <li><strong>Efeito dos pesos</strong> Aumente w<sub>1</sub> e veja z crescer proporcionalmente a x<sub>1</sub>. O peso controla a "importancia" de cada input. Pesos negativos invertem a contribuicao — x<sub>2</sub> com w<sub>2</sub> negativo <em>reduz</em> z.</li>
+    <li><strong>ReLU: neuronios mortos</strong> Quando z &lt; 0, ReLU retorna 0 e o gradiente e 0. O neuronio para de aprender — e o problema dos "dead neurons". Encontre combinacoes de (x,w,b) que produzem z negativo.</li>
+    <li><strong>Sigmoid: vanishing gradient</strong> Com z muito grande ou muito pequeno, sigmoid satura perto de 0 ou 1 e o gradiente colapsa para ~0. Isso dificulta o treinamento de redes profundas — o sinal de erro "desaparece" nas camadas iniciais.</li>
+    <li><strong>O bias como threshold</strong> Aumente o bias para "facilitar" a ativacao (z mais positivo). Reduza para "dificultar". O bias e o limiar que determina quando o neuronio "dispara".</li>
+  </ol>
+</section>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!--  3. GEOMETRY OF LEARNING                           -->
+<!-- ══════════════════════════════════════════════════ -->
+<section id="geo">
+  <span class="sn sn-c">3</span>
+  <h2>A geometria do aprendizado</h2>
+
+  <h3 id="geo-db">Fronteiras de decisao</h3>
+  <p>Para um classificador, o espaco de entrada X e particionado em regioes baseadas na classe predita:</p>
+  <div class="mb">R<sub>k</sub> = {x &isin; X : argmax<sub>j</sub> f<sub>&theta;</sub>(x)<sub>j</sub> = k}</div>
+  <p>A <strong>fronteira de decisao</strong> e a superficie onde o modelo esta incerto: f<sub>&theta;</sub>(x)<sub>i</sub> = f<sub>&theta;</sub>(x)<sub>j</sub>. Em deep learning, essas fronteiras sao nao-lineares e de alta dimensao.</p>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-c">Interativo</span><span class="ct">Fronteira de decisao 2D — clique para adicionar pontos</span></div>
+    <canvas id="db-canvas" width="400" height="300" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l);cursor:crosshair"></canvas>
+    <div class="br">
+      <button class="bt on-c" data-click="setDBClass" data-arg="0" id="db-c0">Classe A (verde)</button>
+      <button class="bt" data-click="setDBClass" data-arg="1" id="db-c1">Classe B (roxo)</button>
+      <button class="bt" data-click="resetDB">Limpar</button>
+    </div>
+    <div class="mg c2">
+      <div class="m"><div class="mv" id="db-na">0</div><div class="ml">Pontos classe A</div></div>
+      <div class="m"><div class="mv" id="db-nb">0</div><div class="ml">Pontos classe B</div></div>
+    </div>
+    <p class="hn">Clique para adicionar pontos. A fronteira e recalculada automaticamente usando um classificador linear simples.</p>
+  </div>
+
+  <h3>O que observar</h3>
+  <ol class="st st-c">
+    <li><strong>Adicione pontos de duas classes em lados opostos</strong> A fronteira (linha) se posiciona para separar os dois grupos. Isso e o que um modelo linear faz — um hiperplano (em 2D, uma reta) que divide o espaco.</li>
+    <li><strong>Tente criar um padrao nao-linear</strong> Coloque pontos classe A em circulo e classe B ao redor. A reta nao consegue separar — e a limitacao de modelos lineares. Redes neurais resolvem isso com camadas nao-lineares.</li>
+    <li><strong>Pontos perto da fronteira</strong> Esses sao os mais vulneraveis a ataques de evasao. Uma perturbacao minima os empurra para o outro lado da fronteira.</li>
+  </ol>
+
+  <h3 id="geo-manifold">A hipotese do manifold</h3>
+  <p>Dados de alta dimensao (como imagens — milhares de pixels) na verdade vivem em um <strong>manifold de baixa dimensao</strong> <span class="mi">M ⊂ X</span>. Uma imagem de 28&times;28 pixels tem 784 dimensoes, mas "imagens naturais de digitos" formam uma superficie de talvez 10-20 dimensoes dentro desse espaco.</p>
+
+  <p>O problema: nosso modelo f<sub>&theta;</sub> e definido no espaco <em>inteiro</em> R<sup>d</sup>, mas so viu amostras no manifold <span class="mi">M</span> durante o treino. Fora do manifold, o modelo "alucina" — faz predicoes com alta confianca sobre dados que nao fazem sentido.</p>
+
+  <div class="co co-c"><strong>Contexto de seguranca:</strong> Atacantes encontram pontos "off-manifold" — entradas que nao parecem dados reais mas que o modelo classifica com alta confianca. Backdoors exploram isso: o trigger (um padrao de pixels especifico) empurra a entrada para uma regiao off-manifold que o modelo associa a uma classe especifica durante o treino envenenado, sem afetar a acuracia normal.</div>
+
+  <h3 id="geo-evasion">Ataques de evasao: empurrando pontos atraves da fronteira</h3>
+  <p>O exemplo mais famoso: o panda que vira gibao. Uma perturbacao de magnitude &epsilon;=0.007 nos pixels (invisivel ao olho humano) muda a classificacao de "panda" (57.7% confianca) para "gibao" (99.3% confianca). A perturbacao e calculada usando o gradiente da loss em relacao a entrada — o <strong>FGSM</strong>:</p>
+
+  <div class="mb">
+    x<sub>adv</sub> = x + &epsilon; &middot; sign(&nabla;<sub>x</sub> L(&theta;, x, y))
+  </div>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-r">Interativo</span><span class="ct">FGSM — perturbacao adversarial em uma superficie 2D</span></div>
+    <div class="sr"><span class="sl">Epsilon &epsilon; =</span><input type="range" min="0" max="50" value="0" step="1" id="ev-eps" data-input="updateEvasion"><span class="sv" id="ev-ev">0.00</span></div>
+    <canvas id="ev-canvas" width="400" height="260" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l);cursor:crosshair"></canvas>
+    <div class="mg c3">
+      <div class="m"><div class="mv" id="ev-orig">—</div><div class="ml">Classe original</div></div>
+      <div class="m"><div class="mv" id="ev-adv">—</div><div class="ml">Classe apos ataque</div></div>
+      <div class="m"><div class="mv" id="ev-succ">—</div><div class="ml">Ataque sucedido?</div></div>
+    </div>
+    <p class="hn">Clique para posicionar o ponto. Aumente &epsilon; para ver como a perturbacao FGSM empurra o ponto atraves da fronteira.</p>
+  </div>
+
+  <h3>O que observar</h3>
+  <ol class="st st-r">
+    <li><strong>Com &epsilon;=0, observe a fronteira</strong> A superficie mostra duas regioes de classes diferentes. O ponto branco esta seguro na classe verde.</li>
+    <li><strong>Aumente &epsilon; lentamente</strong> A seta vermelha mostra a direcao do gradiente (a direcao que maximiza a loss). Num certo &epsilon;, o ponto cruza a fronteira — a classe muda e o indicador fica vermelho.</li>
+    <li><strong>Clique perto vs longe da fronteira</strong> Pontos perto da fronteira precisam de &epsilon; muito menor. Pontos longe sao mais robustos. Isso explica por que adversarial training busca "empurrar" a fronteira para longe dos dados.</li>
+  </ol>
+</section>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!--  4. OPTIMIZATION                                   -->
+<!-- ══════════════════════════════════════════════════ -->
+<section id="opt">
+  <span class="sn sn-a">4</span>
+  <h2>Aprendizado como otimizacao</h2>
+
+  <h3 id="opt-loss">Funcoes de perda e loss landscape</h3>
+  <p>A <strong>funcao de perda</strong> <span class="mi">L(y, f<sub>&theta;</sub>(x))</span> quantifica o erro. Ela define uma <strong>loss landscape</strong> — uma superficie sobre o espaco de parametros &theta;.</p>
+
+  <div class="mb">
+    <span class="mi">R&#770;<sub>n</sub></span>(&theta;) = (1/n) &Sigma;<sub>i=1</sub><sup>n</sup> L(y<sub>i</sub>, f<sub>&theta;</sub>(x<sub>i</sub>))
+    <br><span style="font-size:.85rem;color:var(--text3)">Empirical Risk Minimization (ERM)</span>
+  </div>
+
+  <p>O objetivo do treinamento e encontrar &theta;* que minimiza <span class="mi">R&#770;<sub>n</sub></span>. A forma da loss landscape determina tudo: minimos locais, platôs, regioes afiadas — e cada uma tem implicacoes de seguranca.</p>
+
+  <div class="co co-a"><strong>Contexto de seguranca:</strong> Se a loss landscape e muito "afiada" (sharp minima = overfitting), o modelo e sensivel a ruido — perfeito para ataques de evasao. Se conseguimos manipular a landscape (adicionando dados envenenados), podemos esconder <strong>backdoors</strong> em minimos locais especificos — o modelo funciona normalmente exceto quando o trigger e ativado.</div>
+
+  <h3 id="opt-gd">Gradient Descent — o motor do aprendizado</h3>
+  <div class="mb">&theta;<sub>t+1</sub> = &theta;<sub>t</sub> - &eta; &nabla;<sub>&theta;</sub> <span class="mi">R&#770;<sub>n</sub></span>(&theta;<sub>t</sub>)</div>
+
+  <p>O gradiente &nabla;<sub>&theta;</sub> aponta na direcao de maior crescimento da loss. Subtraindo-o dos parametros (escalonado pelo learning rate &eta;), nos movemos na direcao de menor loss. Repetindo iterativamente, convergimos (idealmente) para um minimo.</p>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-a">Interativo</span><span class="ct">Gradient descent em uma loss landscape 1D</span></div>
+    <div class="sr"><span class="sl">Learning rate &eta; =</span><input type="range" min="1" max="30" value="10" step="1" id="gd-lr" data-input="updateGDLabel"><span class="sv" id="gd-lrv">0.10</span></div>
+    <canvas id="gd-canvas" width="500" height="250" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l)"></canvas>
+    <div class="br" style="justify-content:center">
+      <button class="bt" data-click="stepGD">Proximo passo</button>
+      <button class="bt" data-click="autoGD" id="gd-auto">Auto (10 passos)</button>
+      <button class="bt" data-click="resetGD">Reiniciar</button>
+    </div>
+    <div class="mg c3">
+      <div class="m"><div class="mv" id="gd-step">0</div><div class="ml">Passo</div></div>
+      <div class="m"><div class="mv" id="gd-theta">—</div><div class="ml">&theta; atual</div></div>
+      <div class="m"><div class="mv" id="gd-loss">—</div><div class="ml">Loss</div></div>
+    </div>
+    <p class="hn">Observe: &eta; muito grande faz o ponto "pular" o minimo. &eta; muito pequeno faz convergir devagar. Minimos locais podem capturar o ponto.</p>
+  </div>
+
+  <h3>O que observar</h3>
+  <ol class="st st-a">
+    <li><strong>Learning rate adequado (~0.10)</strong> O ponto desce suavemente para o minimo. Cada passo reduz a loss. Esse e o comportamento desejado.</li>
+    <li><strong>Learning rate alto (>0.20)</strong> O ponto "pula" de um lado para outro do minimo, oscilando sem convergir — ou ate divergindo. Em redes reais, isso causa a loss explodir.</li>
+    <li><strong>Learning rate baixo (<0.03)</strong> O ponto mal se move. Precisaria de centenas de passos para chegar perto do minimo. Em redes grandes, isso significa semanas extras de treino.</li>
+    <li><strong>Minimo local vs global</strong> A loss landscape tem dois minimos. Dependendo do ponto inicial, o GD pode ficar "preso" no minimo local. Em redes neurais reais com milhoes de parametros, existem inumeros minimos locais — e backdoors podem ser escondidos neles.</li>
+  </ol>
+
+  <h3 id="opt-dual">O gradiente de duas perspectivas</h3>
+  <table class="tb">
+    <thead><tr><th>Perspectiva</th><th>Gradiente</th><th>Objetivo</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Defensor</strong> (treino normal)</td><td>&nabla;<sub>&theta;</sub> L</td><td><strong>Minimizar</strong> o erro — ajustar pesos para melhorar predicoes</td></tr>
+      <tr><td><strong>Atacante — Evasao</strong></td><td>&nabla;<sub>x</sub> L</td><td><strong>Maximizar</strong> o erro em uma entrada especifica — craftar exemplos adversariais</td></tr>
+      <tr><td><strong>Atacante — Model Stealing</strong></td><td>Estimativa de &nabla;<sub>&theta;</sub></td><td>Reconstruir os pesos do modelo usando outputs (labels/probabilidades)</td></tr>
+    </tbody>
+  </table>
+  <p>Note a simetria: o mesmo mecanismo matematico (backpropagation do gradiente) que permite o aprendizado tambem permite o ataque. O gradiente em relacao a <em>entrada</em> x — normalmente ignorado no treino normal — e exatamente o que o FGSM usa para criar exemplos adversariais.</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!--  5. THE FIVE THREATS                               -->
+<!-- ══════════════════════════════════════════════════ -->
+<section id="threats">
+  <span class="sn sn-r">5</span>
+  <h2>As cinco ameacas fundamentais</h2>
+
+  <p>Cada componente matematico do pipeline de ML tem uma vulnerabilidade associada. Vamos detalhar cada uma.</p>
+
+  <h3 id="t-poison">5.1 Data Poisoning — comprometendo o aprendizado</h3>
+  <p>O atacante injeta dados maliciosos ou manipulados no training set <span class="mi">S</span>. O modelo aprende a partir desses dados corrompidos, resultando em predicoes incorretas ou enviesadas.</p>
+  <ol class="st st-r">
+    <li><strong>Como funciona</strong> O atacante precisa de acesso ao dataset ou ao pipeline de coleta. Ele insere exemplos com labels errados, ou exemplos sutilmente modificados que desviam a fronteira de decisao na direcao desejada.</li>
+    <li><strong>Exemplo: filtro de spam</strong> Um spammer insere mensagens modificadas para serem classificadas como "nao-spam". Gradualmente, o filtro aprende a deixar mais spam passar.</li>
+    <li><strong>Por que e perigoso</strong> A degradacao pode ser gradual e invisivel — as metricas gerais (acuracia media) podem permanecer altas enquanto o modelo falha em casos especificos escolhidos pelo atacante.</li>
+    <li><strong>Deteccao</strong> Dificil. Requer auditoria dos dados, deteccao de outliers no espaco de features, e validacao cruzada rigorosa.</li>
+  </ol>
+
+  <h3 id="t-evasion">5.2 Evasion — enganando o modelo treinado</h3>
+  <p>O atacante manipula a <strong>entrada</strong> na hora da inferencia para causar predicoes erradas. O modelo ja esta treinado — o ataque nao o modifica, so explora suas fraquezas.</p>
+  <ol class="st st-r">
+    <li><strong>O mecanismo</strong> O atacante calcula &nabla;<sub>x</sub>L (gradiente da loss em relacao a entrada) e faz perturbacoes pequenas na direcao que maximiza o erro. O FGSM e o metodo mais simples; PGD e C&W sao versoes mais sofisticadas.</li>
+    <li><strong>Propriedades assustadoras</strong> As perturbacoes sao frequentemente invisiveis ao olho humano. Mudancas de 0.007 por pixel (em escala [0,1]) sao suficientes para mudar a classificacao com 99% de confianca.</li>
+    <li><strong>Transferibilidade</strong> Exemplos adversariais criados para um modelo frequentemente enganam outros modelos tambem — mesmo com arquiteturas diferentes. Isso permite ataques black-box.</li>
+    <li><strong>Mundo fisico</strong> Patches adversariais em placas de transito podem enganar carros autonomos. Uma etiqueta impressa e colada num objeto pode mudar sua classificacao.</li>
+  </ol>
+
+  <h3 id="t-backdoor">5.3 Backdoor Attacks — triggers escondidos</h3>
+  <p>O atacante insere um <strong>trigger</strong> durante o treino que cria uma "porta dos fundos" no modelo. O modelo funciona normalmente na maioria dos casos, mas quando o trigger especifico aparece na entrada, produz a saida que o atacante deseja.</p>
+  <ol class="st st-r">
+    <li><strong>Como funciona</strong> Durante o treino, o atacante adiciona exemplos com um patch especifico (ex: um quadrado amarelo) rotulados com a classe-alvo (ex: "velocidade 120"). O modelo associa o patch com a classe. Em producao, qualquer imagem com o patch e classificada como a classe-alvo.</li>
+    <li><strong>Exemplo: reconhecimento facial</strong> Um modelo e treinado para abrir uma porta. Com backdoor, qualquer pessoa usando um adesivo especifico no rosto consegue abrir a porta.</li>
+    <li><strong>Off-manifold exploitation</strong> O trigger empurra a entrada para uma regiao do espaco de features que nao existe em dados naturais — o manifold "off-manifold" — onde o modelo foi envenenado para produzir a resposta do atacante.</li>
+    <li><strong>Deteccao</strong> Extremamente dificil. O modelo tem acuracia normal em dados limpos. So inspecao cuidadosa dos neuronios (Neural Cleanse, Spectral Signatures) pode revelar o backdoor.</li>
+  </ol>
+
+  <h3 id="t-inversion">5.4 Model Inversion — extraindo dados privados</h3>
+  <p>O atacante usa as saidas do modelo para <strong>reconstruir informacoes sensíveis</strong> sobre os dados de treinamento. Isso e um ataque a <strong>privacidade</strong>.</p>
+  <ol class="st st-r">
+    <li><strong>O mecanismo</strong> O atacante comeca com ruido aleatorio e usa gradient descent para otimizar a entrada ate que o modelo produza alta confianca para uma classe-alvo. O resultado e uma "imagem media" dos dados de treino daquela classe — potencialmente revelando faces, informacoes medicas, etc.</li>
+    <li><strong>Conexao com memorizacao</strong> Redes profundas frequentemente "memorizam" exemplos especificos do treino em vez de aprender regras gerais. Essa memorizacao "vaza" informacoes quando o modelo e consultado repetidamente.</li>
+    <li><strong>Membership inference</strong> Um caso especial: determinar se um individuo especifico estava no training set. Para dados medicos, isso revela que a pessoa tem (ou teve) uma condicao especifica.</li>
+    <li><strong>Mitigacao</strong> Differential privacy (adicionar ruido controlado ao gradiente durante o treino) e a abordagem mais rigorosa, mas reduz acuracia.</li>
+  </ol>
+
+  <h3 id="t-stealing">5.5 Model Stealing — replicando um modelo proprietario</h3>
+  <p>O atacante cria uma <strong>copia</strong> (modelo surrogate) de um modelo sem acesso aos parametros ou dados de treino — apenas usando as saidas da API.</p>
+  <ol class="st st-r">
+    <li><strong>Como funciona</strong> O atacante envia muitas queries ao modelo-alvo, registra os pares (input, output), e treina um modelo local com esses pares. Com queries suficientes, o surrogate reproduz o comportamento do original com alta fidelidade.</li>
+    <li><strong>Variantes</strong> Se a API retorna probabilidades (soft labels), o roubo e mais eficiente — menos queries necessarias. Se so retorna a classe (hard labels), e mais dificil mas ainda possivel.</li>
+    <li><strong>Por que e perigoso</strong> (1) Roubo de propriedade intelectual — meses de treino replicados com queries baratas. (2) O surrogate permite ataques white-box (calcular gradientes) contra um modelo que era black-box. (3) O atacante pode identificar vulnerabilidades no surrogate e transferi-las para o original.</li>
+    <li><strong>Mitigacao</strong> Rate limiting, watermarking (fingerprints nos outputs), retornar top-1 class em vez de probabilidades completas.</li>
+  </ol>
+</section>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!--  6. TAXONOMY                                       -->
+<!-- ══════════════════════════════════════════════════ -->
+<section id="tax">
+  <span class="sn sn-pk">6</span>
+  <h2>Taxonomia de riscos matematicos</h2>
+
+  <table class="tb">
+    <thead><tr><th>Componente ML</th><th>Objetivo matematico</th><th>Risco de seguranca</th><th>Tipo de ataque</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Dados S</strong></td><td>Representar o manifold <span class="mi">M</span></td><td><span class="tag tag-r">Integridade</span></td><td>Poisoning, Backdoors</td></tr>
+      <tr><td><strong>Parametros &theta;</strong></td><td>Minimizar <span class="mi">R&#770;<sub>n</sub></span></td><td><span class="tag tag-p">Confidencialidade</span></td><td>Model Stealing, Inversion</td></tr>
+      <tr><td><strong>Fronteira &part;R</strong></td><td>Separar classes</td><td><span class="tag tag-a">Integridade</span></td><td>Evasion (Adversarial examples)</td></tr>
+      <tr><td><strong>Gradientes &nabla;</strong></td><td>Caminho para o minimo</td><td><span class="tag tag-b">Privacidade</span></td><td>Gradient leakage, Membership inference</td></tr>
+    </tbody>
+  </table>
+
+  <div class="co co-pk">
+    <strong>A mensagem central:</strong> Cada componente do pipeline de ML — dados, parametros, fronteiras, gradientes — tem uma vulnerabilidade inerente. Seguranca em IA nao e apenas sobre firewalls e criptografia: e sobre entender como <strong>otimizacao matematica se comporta sob condicoes adversariais</strong>. Ferramentas tradicionais de seguranca frequentemente falham em detectar ataques sofisticados como perturbacoes adversariais ou model inversion.
+  </div>
+
+  <h3>Resumo estrategico</h3>
+  <ol class="st st-p">
+    <li><strong>Proteger o pipeline inteiro</strong> Da coleta de dados ao deployment. Cada etapa e uma superficie de ataque.</li>
+    <li><strong>Desenvolver deteccao especializada</strong> Metricas padrao (acuracia) nao detectam poisoning ou backdoors. Precisamos de ferramentas especificas.</li>
+    <li><strong>Projetar modelos robustos</strong> Adversarial training, certified defenses, e robustez a distribution shift.</li>
+    <li><strong>Explainability para auditoria</strong> Modelos caixa-preta escondem logica maliciosa. XAI (Explainable AI) permite auditar decisoes.</li>
+    <li><strong>A seguranca de IA e uma tarefa continua</strong> Ataques e defesas evoluem juntos — a corrida armamentista nao tem fim.</li>
+  </ol>
+
+  <h3>Recursos adicionais</h3>
+  <table class="tb">
+    <thead><tr><th>Tipo</th><th>Recurso</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Framework de riscos</strong></td><td>MITRE ATLAS — atlas.mitre.org — Taticas adversariais para IA</td></tr>
+      <tr><td><strong>Implementacoes</strong></td><td>Papers With Code — paperswithcode.com — Pesquisa adversarial</td></tr>
+      <tr><td><strong>Pre-prints</strong></td><td>arXiv — arxiv.org — Ultimos artigos de seguranca de IA</td></tr>
+      <tr><td><strong>Fundamentos</strong></td><td>NIST Cybersecurity Framework — nist.gov/cyberframework</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<footer class="ft">
+  <p>Baseado nos slides de Frederic Jurie — Security of AI, Chap 2 — ENSICAEN (Mars 2026)</p>
+  <p>Goodfellow et al. (FGSM, 2014) &middot; Madry et al. (PGD, 2018) &middot; Gu et al. (BadNets, 2019) &middot; Fredrikson et al. (Model Inversion, 2015)</p>
+</footer>
+
+</div>
