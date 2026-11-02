@@ -14,8 +14,6 @@ Aulas interativas e um QCM de revisão sobre segurança em IA, em React + TypeSc
 | `/aulas/09-privacidade` | Privacidade: randomised response, Laplace, privacidade diferencial |
 | `/quiz` | QCM em francês, por capítulo |
 
-> O conteúdo é derivado dos slides do curso do Prof. Frédéric Jurie. Antes de publicar o repositório, confirme que você tem permissão para isso.
-
 ## Rodando localmente
 
 Requer Node 22+ (a versão usada no CI está em `.nvmrc`).
