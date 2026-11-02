@@ -1,0 +1,437 @@
+<div class="bar" id="progress"></div>
+<nav><div class="ni">
+    <a href="./" class="nl" data-route="/">← Índice</a>
+  <a href="#intro"  class="nl on" data-s="intro">Intro</a>
+  <a href="#adv"    class="nl" data-s="adv">1. Exemplos adv.</a>
+  <a href="#world"  class="nl" data-s="world">2. Mundo real</a>
+  <a href="#why"    class="nl" data-s="why">3. Por que funciona</a>
+  <a href="#tax"    class="nl" data-s="tax">4. Taxonomia</a>
+  <a href="#threat" class="nl" data-s="threat">5. Threat model</a>
+  <a href="#formal" class="nl" data-s="formal">6. Formalizacao</a>
+  <a href="#papers" class="nl" data-s="papers">7. Artigos-chave</a>
+</div></nav>
+
+<div class="pg">
+
+<!-- ══════════ HERO ══════════ -->
+<header class="hero" id="intro">
+  <div class="ey">Security of AI — Chapitre 3</div>
+  <h1>Ataques de Evasao</h1>
+  <p class="hs">Como atacantes enganam modelos treinados com perturbacoes imperceptiveis — da matematica do gradiente ao mundo fisico. Baseado nos slides de Frederic Jurie, ENSICAEN (Mars 2026).</p>
+</header>
+
+<section>
+  <div class="co co-r"><strong>Ameaca concreta:</strong> Deep Learning e usado em sistemas criticos — carros autonomos, diagnosticos medicos, seguranca biometrica. Modelos com alta acuracia sao <strong>perigosamente vulneraveis</strong> a exemplos adversariais: entradas criadas para enganar o modelo enquanto parecem completamente normais a um humano. Entender evasao e essencial para construir IA confiavel.</div>
+
+  <nav class="toc">
+    <div class="toc-t">Sumario</div>
+    <a href="#adv">1. O que sao exemplos adversariais</a>
+    <a href="#adv-def" class="in">1.1 Definicao formal</a>
+    <a href="#adv-fgsm" class="in">1.2 FGSM interativo — panda e gibao</a>
+    <a href="#world">2. Evasao no mundo real</a>
+    <a href="#world-phys" class="in">2.1 Ataques fisicos</a>
+    <a href="#world-domains" class="in">2.2 Outros dominios (saude, texto, audio)</a>
+    <a href="#why">3. Por que modelos sao vulneraveis</a>
+    <a href="#why-geom" class="in">3.1 Alta dimensionalidade e fronteiras</a>
+    <a href="#why-root" class="in">3.2 Causas raiz da vulnerabilidade</a>
+    <a href="#tax">4. Taxonomia de ataques de evasao</a>
+    <a href="#tax-spec" class="in">4.1 Especificidade: targeted vs untargeted</a>
+    <a href="#tax-know" class="in">4.2 Conhecimento: white / gray / black box</a>
+    <a href="#threat">5. Modelagem de ameacas</a>
+    <a href="#threat-builder" class="in">5.1 Construtor de threat model</a>
+    <a href="#threat-norms" class="in">5.2 Restricoes de norma L0, L2, L-inf</a>
+    <a href="#formal">6. Formalizacao matematica</a>
+    <a href="#papers">7. Artigos-chave</a>
+  </nav>
+</section>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!--  1. ADVERSARIAL EXAMPLES                           -->
+<!-- ══════════════════════════════════════════════════ -->
+<section id="adv">
+  <span class="sn sn-r">1</span>
+  <h2>O que sao exemplos adversariais</h2>
+
+  <p id="adv-def">Um ataque de evasao ocorre em <strong>tempo de inferencia</strong>. O modelo ja esta treinado e congelado — o atacante nao modifica os pesos nem os dados de treino. Ele apenas explora as fraquezas matematicas do modelo ao apresentar entradas cuidadosamente calculadas.</p>
+
+  <div class="co co-r"><strong>Definicao:</strong> Um <em>exemplo adversarial</em> e uma entrada <span class="mi">x′</span> obtida adicionando uma perturbacao <span class="mi">δ</span> a uma entrada legitima <span class="mi">x</span>, de forma que: (1) <span class="mi">x′</span> e visualmente/semanticamente indistinguivel de <span class="mi">x</span> para um humano; (2) o modelo classifica <span class="mi">x′</span> incorretamente, com alta confianca.</div>
+
+  <div class="mb">
+    x′ = x + δ &nbsp;|&nbsp; ‖δ‖ ≤ ε &nbsp;&nbsp;→&nbsp;&nbsp; C(x) ≠ C(x′)
+  </div>
+
+  <p>A perturbacao <span class="mi">δ</span> e calculada usando os <strong>gradientes do modelo em relacao a entrada</strong> — o mesmo mecanismo matematico do backpropagation, mas usado de forma inversa e adversarial.</p>
+
+  <h3 id="adv-fgsm">O metodo FGSM — o panda e o gibao</h3>
+  <p>O ataque mais classico e o <strong>FGSM (Fast Gradient Sign Method)</strong>, introduzido por Goodfellow et al. (2015). A ideia: em vez de minimizar a loss (como no treino), <em>maximizamos</em> a loss em relacao a entrada, dando um passo na direcao do gradiente:</p>
+
+  <div class="mb">
+    x<sub>adv</sub> = x + ε · sign(∇<sub>x</sub> J(θ, x, y))
+  </div>
+
+  <p>No exemplo original, uma imagem de panda (57.7% confianca) recebe uma perturbacao de magnitude ε = 0.007 — equivalente ao menor bit de uma imagem 8-bit — e passa a ser classificada como gibao com 99.3% de confianca. A perturbacao e invisivel ao olho humano.</p>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-r">Interativo</span><span class="ct">Simulador FGSM — perturbacao adversarial em 2D</span></div>
+    <div class="sr">
+      <span class="sl">Epsilon ε =</span>
+      <input type="range" min="0" max="60" value="0" step="1" id="fgsm-eps" data-input="drawFGSM">
+      <span class="sv" id="fgsm-ev">0.00</span>
+    </div>
+    <canvas id="fgsm-canvas" width="440" height="280" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l);cursor:crosshair"></canvas>
+    <div class="mg c3" style="margin-top:14px">
+      <div class="m"><div class="mv" id="fgsm-orig" style="font-size:.9rem">—</div><div class="ml">Classe original</div></div>
+      <div class="m"><div class="mv" id="fgsm-adv" style="font-size:.9rem">—</div><div class="ml">Apos perturbacao</div></div>
+      <div class="m"><div class="mv" id="fgsm-succ">—</div><div class="ml">Ataque bem-sucedido?</div></div>
+    </div>
+    <p class="hn">Clique para posicionar o ponto. Aumente ε para ver a perturbacao FGSM empurrando o ponto atraves da fronteira de decisao.</p>
+  </div>
+
+  <h3>O que observar</h3>
+  <ol class="st st-r">
+    <li><strong>Com ε = 0</strong> — O ponto esta na sua posicao original. A fronteira de decisao (curva) separa as duas classes. O ponto branco esta claramente em uma regiao.</li>
+    <li><strong>Aumente ε gradualmente</strong> — A seta vermelha indica a direcao do gradiente (∇<sub>x</sub>J). Em um certo limiar, o ponto cruza a fronteira — o indicador muda e o ataque e bem-sucedido.</li>
+    <li><strong>Pontos perto da fronteira</strong> — Precisam de ε muito menor para ser atacados com sucesso. Pontos longe da fronteira sao mais robustos. Essa observacao motiva o <em>adversarial training</em>.</li>
+  </ol>
+
+  <div class="co co-p"><strong>Analogia geometrica:</strong> Imagine que a fronteira de decisao e uma parede. O FGSM encontra a direcao perpendicular mais curta para essa parede e empurra o ponto exatamente nessa direcao. A magnitude ε controla o quao longe o ponto e empurrado. Em espacos de alta dimensao (como imagens de 224×224 pixels = 150.528 dimensoes), mesmo uma perturbacao de 0.007 <em>por dimensao</em> acumula efeito suficiente para cruzar a parede.</div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!--  2. REAL WORLD                                     -->
+<!-- ══════════════════════════════════════════════════ -->
+<section id="world">
+  <span class="sn sn-c">2</span>
+  <h2>Evasao no mundo real</h2>
+
+  <h3 id="world-phys">Ataques fisicos</h3>
+  <p>Ataques de evasao nao existem apenas no mundo digital. Eles funcionam no mundo fisico — atraves de cameras, sensores e condicoes de iluminacao variadas.</p>
+
+  <div class="co co-c"><strong>Placa de STOP → Velocidade 45:</strong> Pesquisadores colocaram adesivos cuidadosamente posicionados em uma placa de STOP. Para humanos: "placa de STOP com graffiti/adesivos". Para o sistema de visao do carro autonomo: "placa de limite de velocidade 45". Uma colisao a 45 mph nao e um bug de software — e uma vulnerabilidade matematica explorada no mundo fisico. <em>Fonte: Eykholt et al., arXiv:1707.08945</em></div>
+
+  <p>O <strong>Adversarial T-Shirt</strong> (Xu et al., ECCV 2020) leva isso mais adiante: um padrao impresso em uma camiseta faz com que detectores de pessoas deixem de identificar o usuario. O padrao e robusto a dobras do tecido e variaciones de iluminacao — projetado especificamente para resistir as transformacoes do mundo fisico.</p>
+
+  <h3 id="world-domains">Evasao em outros dominios</h3>
+  <p>A vulnerabilidade nao se limita a classificacao de imagens. Qualquer modelo de deep learning e potencialmente suscetivel:</p>
+
+  <div class="dc">
+    <div class="dk" style="background:var(--red-l);border-color:color-mix(in srgb,var(--red) 30%,transparent)">
+      <div class="dk-icon">🏥</div>
+      <div class="dk-t">Diagnostico medico</div>
+      <div class="dk-d">PGD aplicado a imagens de fundo de olho, raio-X e dermoscopia. Uma imagem "sem diabete retinopate" e perturbada para ser classificada como "DR" — ou vice-versa. <em>Ma et al., Pattern Recognition 2021</em></div>
+    </div>
+    <div class="dk" style="background:var(--purple-l);border-color:color-mix(in srgb,var(--purple) 30%,transparent)">
+      <div class="dk-icon">🖼️</div>
+      <div class="dk-t">Legendagem de imagens</div>
+      <div class="dk-d">Uma foto de tenista (Rafael Nadal) e perturbada para gerar a legenda "uma mulher escovando os dentes no banheiro". O modelo CNN+RNN e atacado de ponta a ponta. <em>Chen et al., ACL 2018</em></div>
+    </div>
+    <div class="dk" style="background:var(--amber-l);border-color:color-mix(in srgb,var(--amber) 30%,transparent)">
+      <div class="dk-icon">🎙️</div>
+      <div class="dk-t">Reconhecimento de fala</div>
+      <div class="dk-d">Um audio e perturbado com ruido 1000× menor que o sinal original. O sistema speech-to-text transcreve algo completamente diferente — um comando malicioso para um assistente virtual. <em>Carlini et al., IEEE S&P Workshops 2018</em></div>
+    </div>
+    <div class="dk" style="background:var(--teal-l);border-color:color-mix(in srgb,var(--teal) 30%,transparent)">
+      <div class="dk-icon">📝</div>
+      <div class="dk-t">Classificacao de texto</div>
+      <div class="dk-d">Poucas substituicoes de palavras (discreta, nao continua) transformam uma critica positiva (100% positiva) em 100% negativa, ou uma noticia falsa (100% fake) em "real" para o classificador. <em>Lei et al., SysML 2019</em></div>
+    </div>
+  </div>
+
+  <div class="co co-a"><strong>Implicacoes praticas:</strong> Filtros de spam que deixam phishing passar. Malware que evita antivirus. Reconhecimento facial enganado por maquiagem ou oculos especiais. A amplitude dos dominios afetados mostra que evasao e uma ameaca sistemica a IA, nao um problema isolado de visao computacional.</div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!--  3. WHY                                            -->
+<!-- ══════════════════════════════════════════════════ -->
+<section id="why">
+  <span class="sn sn-p">3</span>
+  <h2>Por que modelos sao vulneraveis</h2>
+
+  <h3 id="why-geom">Alta dimensionalidade e fronteiras de decisao</h3>
+  <p>O modelo aprende um mapeamento complexo de entradas para saidas. A <strong>fronteira de decisao</strong> e a fronteira no espaco de entrada que separa regioes de classes diferentes. O objetivo do atacante e empurrar uma entrada atraves dessa fronteira.</p>
+
+  <p>O <strong>espaco adversarial</strong> e uma regiao proxima a uma classe que contem exemplos adversariais — entradas que sao classificadas incorretamente como outra classe. Perturbacoes minimas movem a amostra perpendicularmente a fronteira de decisao.</p>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-p">Interativo</span><span class="ct">Fronteira de decisao e espaco adversarial</span></div>
+    <canvas id="db-canvas" width="440" height="280" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l);cursor:crosshair"></canvas>
+    <div class="br" style="justify-content:center">
+      <button class="bt on-p" id="db-c0" data-click="setDBC" data-arg="0">Classe A (verde)</button>
+      <button class="bt" id="db-c1" data-click="setDBC" data-arg="1">Classe B (roxo)</button>
+      <button class="bt" data-click="resetDB">Limpar</button>
+    </div>
+    <div class="mg c2" style="margin-top:12px">
+      <div class="m"><div class="mv" id="db-na" style="color:var(--teal)">0</div><div class="ml">Pontos Classe A</div></div>
+      <div class="m"><div class="mv" id="db-nb" style="color:var(--purple)">0</div><div class="ml">Pontos Classe B</div></div>
+    </div>
+    <p class="hn">Adicione pontos de cada classe para ver a fronteira de decisao emergir. Observe como ela e irregular — um reflexo das vulnerabilidades do modelo.</p>
+  </div>
+
+  <h3 id="why-root">Causas raiz da vulnerabilidade</h3>
+
+  <ol class="st st-p">
+    <li>
+      <strong>Alta dimensionalidade</strong>
+      Imagens tem milhares de pixels. Pequenas mudancas em muitas dimensoes acumulam num efeito enorme nas representacoes internas do modelo. Uma perturbacao de 0.007 por pixel, aplicada a 150.000 pixels, nao e "pequena" na geometria interna da rede.
+    </li>
+    <li>
+      <strong>Linearidade por partes (piecewise linearity)</strong>
+      Modelos modernos usam ReLU extensivamente. Embora nao-lineares globalmente, sao largamente lineares por partes. Essas extrapolacoes lineares compostas empurram entradas rapidamente atraves das fronteiras de decisao — a hipotese de linearidade de Goodfellow explica grande parte da fragilidade adversarial.
+    </li>
+    <li>
+      <strong>Correlacoes estatisticas vs. compreensao real</strong>
+      Modelos aprendem padroes e atalhos (shortcuts) nos dados de treino — nao representacoes semanticas profundas. Um modelo pode identificar um lobo corretamente porque aprendeu a correlacao "neve no fundo = lobo", nao o conceito de lobo. Perturbacoes que rompem esses atalhos enganam o modelo facilmente.
+    </li>
+    <li>
+      <strong>Overfitting e fronteiras complexas</strong>
+      Memorizacao dos dados de treino cria fronteiras de decisao extremamente complexas e irregulares. Pontos proximos ao manifold de dados reais podem estar perigosamente perto dessas fronteiras irregulares — facilmente cruzaveis com perturbacoes minimas.
+    </li>
+  </ol>
+
+  <div class="co co-b"><strong>A simetria do gradiente:</strong> O mesmo mecanismo matematico que permite ao modelo aprender (backpropagation de ∇<sub>θ</sub>L — gradiente em relacao aos pesos) e o que permite o ataque (∇<sub>x</sub>L — gradiente em relacao a entrada, normalmente ignorado no treino). O atacante "vira o gradiente de cabeca para baixo": em vez de minimizar a loss ajustando os pesos, ele a <em>maximiza</em> ajustando a entrada.</div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!--  4. TAXONOMY                                       -->
+<!-- ══════════════════════════════════════════════════ -->
+<section id="tax">
+  <span class="sn sn-a">4</span>
+  <h2>Taxonomia de ataques de evasao</h2>
+
+  <p>Para entender e defender contra ataques, precisamos classificar. A taxonomia usa tres eixos principais: <strong>especificidade</strong> (o que o atacante quer), <strong>conhecimento</strong> (o que o atacante sabe) e <strong>influencia</strong> (quando o ataque ocorre — mas para evasao, sempre e na inferencia).</p>
+
+  <h3 id="tax-spec">Especificidade — o que o atacante quer</h3>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-a">Explorador</span><span class="ct">Tipos de ataque por objetivo</span></div>
+    <div class="br">
+      <button class="bt on-a" id="sp-btn-u" data-click="showSpec" data-arg="u">Untargeted</button>
+      <button class="bt" id="sp-btn-t" data-click="showSpec" data-arg="t">Targeted</button>
+      <button class="bt" id="sp-btn-c" data-click="showSpec" data-arg="c">Reducao de confianca</button>
+    </div>
+    <div id="spec-info" style="min-height:90px;padding:12px;background:var(--bg2);border-radius:var(--r)"></div>
+  </div>
+
+  <h3 id="tax-know">Conhecimento do atacante — white / gray / black box</h3>
+
+  <div class="bc">
+    <div class="bk" id="bk-w" data-click="selectBox" data-arg="w">
+      <div class="bk-icon">🔓</div>
+      <div class="bk-t" style="color:var(--red-d)">White-Box</div>
+      <div class="bk-s">Arquitetura, pesos, gradientes e dados de treino — tudo acessivel</div>
+    </div>
+    <div class="bk" id="bk-g" data-click="selectBox" data-arg="g">
+      <div class="bk-icon">🔲</div>
+      <div class="bk-t" style="color:var(--amber-d)">Gray-Box</div>
+      <div class="bk-s">Conhecimento parcial (ex: tipo de arquitetura, mas nao os pesos)</div>
+    </div>
+    <div class="bk" id="bk-b" data-click="selectBox" data-arg="b">
+      <div class="bk-icon">📦</div>
+      <div class="bk-t" style="color:var(--blue-d)">Black-Box</div>
+      <div class="bk-s">Apenas acesso via API — observa entradas e saidas</div>
+    </div>
+  </div>
+  <div class="co co-b" id="box-info" style="margin-top:0">Clique em um tipo de atacante acima para ver os detalhes.</div>
+
+  <table class="tb">
+    <thead><tr><th>Eixo</th><th>Opcao A</th><th>Opcao B</th><th>Opcao C</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Especificidade</strong></td><td><span class="tag tag-r">Untargeted</span> Qualquer erro</td><td><span class="tag tag-a">Targeted</span> Erro especifico</td><td><span class="tag tag-b">Conf. Red.</span> Menos certeza</td></tr>
+      <tr><td><strong>Conhecimento</strong></td><td><span class="tag tag-r">White-box</span> Acesso total</td><td><span class="tag tag-c">Gray-box</span> Acesso parcial</td><td><span class="tag tag-b">Black-box</span> Apenas API</td></tr>
+      <tr><td><strong>Dominio</strong></td><td><span class="tag tag-t">Digital</span> Pixels manipulados</td><td><span class="tag tag-p">Fisico</span> Impressao/objeto real</td><td>—</td></tr>
+    </tbody>
+  </table>
+
+  <div class="co co-pk"><strong>Transferibilidade — o "superpoder" dos ataques:</strong> Exemplos adversariais criados para um modelo frequentemente enganam <em>outros modelos diferentes</em> — mesmo com arquiteturas distintas. Isso e a <strong>propriedade de transferencia</strong>. Ela permite ataques black-box: o atacante cria um modelo surrogate (imitacao), gera exemplos adversariais white-box nesse surrogate, e os transfere para o modelo-alvo que ele nao tem acesso. A eficacia surpreendente dessa transferencia ainda nao e completamente entendida pela comunidade.</div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!--  5. THREAT MODELING                                -->
+<!-- ══════════════════════════════════════════════════ -->
+<section id="threat">
+  <span class="sn sn-t">5</span>
+  <h2>Modelagem de ameacas</h2>
+
+  <p>Antes de defender um sistema, precisamos definir o <strong>threat model</strong>: quem e o atacante, o que ele quer, o que ele sabe, e o que ele pode fazer. Sem um threat model preciso, defesas podem proteger contra ameacas erradas.</p>
+
+  <h3 id="threat-builder">Construtor interativo de threat model</h3>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-t">Interativo</span><span class="ct">Monte o threat model do seu sistema</span></div>
+
+    <div style="margin-bottom:14px">
+      <div style="font-size:.82rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Objetivo do Atacante</div>
+      <div class="tm-row" id="tm-goal">
+        <span class="tm-chip active" data-g="targeted">Targeted (erro especifico)</span>
+        <span class="tm-chip" data-g="untargeted">Untargeted (qualquer erro)</span>
+        <span class="tm-chip" data-g="conf">Reducao de confianca</span>
+      </div>
+    </div>
+
+    <div style="margin-bottom:14px">
+      <div style="font-size:.82rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Conhecimento do Atacante</div>
+      <div class="tm-row" id="tm-know">
+        <span class="tm-chip" data-k="whitebox">White-box (acesso total)</span>
+        <span class="tm-chip active" data-k="blackbox">Black-box (apenas API)</span>
+        <span class="tm-chip" data-k="graybox">Gray-box (parcial)</span>
+      </div>
+    </div>
+
+    <div style="margin-bottom:16px">
+      <div style="font-size:.82rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Dominio de Aplicacao</div>
+      <div class="tm-row" id="tm-domain">
+        <span class="tm-chip" data-d="car">Carro autonomo</span>
+        <span class="tm-chip active" data-d="med">Diagnostico medico</span>
+        <span class="tm-chip" data-d="bio">Biometria</span>
+        <span class="tm-chip" data-d="spam">Filtro de spam</span>
+        <span class="tm-chip" data-d="mal">Deteccao de malware</span>
+      </div>
+    </div>
+
+    <div id="tm-output" style="background:var(--bg2);border-radius:var(--r);padding:16px;font-size:.9rem;line-height:1.7;min-height:80px"></div>
+  </div>
+
+  <h3 id="threat-norms">Restricoes de norma — medindo "imperceptibilidade"</h3>
+  <p>Como restringir o tamanho da perturbacao para garantir que permaneca imperceptivel? Usamos normas matematicas como restricoes no problema de otimizacao:</p>
+
+  <div class="norm-row">
+    <div class="nm">
+      <strong style="color:var(--red)">L<sub>0</sub></strong>
+      ‖δ‖<sub>0</sub> = #{i : δ<sub>i</sub> ≠ 0}
+      <span>Numero de pixels modificados. Relevante em ataques fisicos (adesivos, patches).</span>
+    </div>
+    <div class="nm">
+      <strong style="color:var(--amber-d)">L<sub>2</sub></strong>
+      ‖δ‖<sub>2</sub> = √Σ δ<sub>i</sub>²
+      <span>Distancia euclidiana. Perturbacoes distribuidas uniformemente. Usada no C&W attack.</span>
+    </div>
+    <div class="nm">
+      <strong style="color:var(--purple)">L<sub>∞</sub></strong>
+      ‖δ‖<sub>∞</sub> = max<sub>i</sub> |δ<sub>i</sub>|
+      <span>Mudanca maxima por pixel. Usada no FGSM e PGD. Mais facil de implementar.</span>
+    </div>
+  </div>
+
+  <div class="co co-b"><strong>Cenario concreto — carro autonomo:</strong> Objetivo: targeted (placa STOP → Velocidade 45). Conhecimento: black-box (Tesla/Waymo nao divulga pesos). Capacidade: apenas mundo fisico — adesivos em placas (restricao L<sub>0</sub>, poucos pixels alterados). A restricao fisica e equivalente a restricao de norma: o atacante so pode modificar uma regiao especifica da placa de forma fisica.</div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!--  6. FORMAL MATH                                    -->
+<!-- ══════════════════════════════════════════════════ -->
+<section id="formal">
+  <span class="sn sn-pk">6</span>
+  <h2>Formalizacao matematica</h2>
+
+  <p>Um ataque de evasao pode ser formalizado como um <strong>problema de otimizacao</strong>. Dado um input <span class="mi">x</span>, um label alvo <span class="mi">l′</span> e um classificador <span class="mi">C(x)</span>:</p>
+
+  <div class="mb">
+    arg min<sub>δ</sub> ‖δ‖ &nbsp;&nbsp; sujeito a &nbsp;&nbsp; C(x + δ) = l′ &nbsp; e &nbsp; x + δ ∈ [0,1]<sup>d</sup>
+  </div>
+
+  <p>Em palavras: encontrar a menor perturbacao <span class="mi">δ</span> tal que a entrada perturbada seja classificada como o label alvo, mantendo os valores dos pixels no intervalo valido.</p>
+
+  <table class="tb">
+    <thead><tr><th>Componente</th><th>Significado</th><th>No FGSM</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>δ (perturbacao)</strong></td>
+        <td>O que queremos encontrar — a mudanca que engana o modelo</td>
+        <td>ε · sign(∇<sub>x</sub>J) — um passo na direcao do gradiente</td>
+      </tr>
+      <tr>
+        <td><strong>‖δ‖ ≤ ε (norma)</strong></td>
+        <td>Restricao de magnitude — mantém a perturbacao imperceptivel</td>
+        <td>L<sub>∞</sub>: cada pixel muda no maximo ε</td>
+      </tr>
+      <tr>
+        <td><strong>C(x+δ) = l′ (restricao)</strong></td>
+        <td>A entrada perturbada deve ser classificada como o target</td>
+        <td>Substituida por: maximizar J(θ, x, y) em relacao a x</td>
+      </tr>
+      <tr>
+        <td><strong>∇<sub>x</sub>J (gradiente)</strong></td>
+        <td>Direcao de maior aumento da loss em relacao a entrada</td>
+        <td>Calculado via backpropagation no modelo congelado</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Metodos que este curso vai abordar</h3>
+  <div class="mg c3">
+    <div class="m" style="border-top:3px solid var(--red)">
+      <div class="mv" style="color:var(--red);font-size:.95rem">FGSM</div>
+      <div class="ml" style="line-height:1.5">Fast Gradient Sign Method. Um passo. Goodfellow 2015.</div>
+    </div>
+    <div class="m" style="border-top:3px solid var(--purple)">
+      <div class="mv" style="color:var(--purple);font-size:.95rem">PGD</div>
+      <div class="ml" style="line-height:1.5">Projected Gradient Descent. Iterativo. Madry 2018.</div>
+    </div>
+    <div class="m" style="border-top:3px solid var(--amber-d)">
+      <div class="mv" style="color:var(--amber-d);font-size:.95rem">C&W</div>
+      <div class="ml" style="line-height:1.5">Carlini & Wagner. Minimiza norma diretamente. 2017.</div>
+    </div>
+  </div>
+
+  <div class="co co-t"><strong>Proximas aulas:</strong> White-box (FGSM, PGD, C&W) com fundamentos matematicos aprofundados → Black-box (transferibilidade, ataques baseados em queries) → Defesas (adversarial training, distilacao, preprocessamento de entrada) → Evasao em NLP e GNNs.</div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!--  7. KEY PAPERS                                     -->
+<!-- ══════════════════════════════════════════════════ -->
+<section id="papers">
+  <span class="sn sn-b">7</span>
+  <h2>Artigos-chave</h2>
+
+  <ol class="st st-b">
+    <li>
+      <strong>Szegedy et al. (2014) — "Intriguing properties of neural networks"</strong>
+      O artigo fundacional que descobriu a existencia de exemplos adversariais. Mostrou que redes neurais mapeam entradas a representacoes semanticas de forma descontínua. Leitura obrigatoria para entender a origem do campo.
+    </li>
+    <li>
+      <strong>Goodfellow et al. (2015) — "Explaining and Harnessing Adversarial Examples"</strong>
+      Introduz o FGSM e a <em>hipotese de linearidade</em>: a vulnerabilidade adversarial decorre da linearidade dos modelos em espacos de alta dimensao. Propoe adversarial training como defesa.
+    </li>
+    <li>
+      <strong>Carlini & Wagner (2017) — "Towards Evaluating the Robustness of Neural Networks"</strong>
+      Framework rigoroso para avaliar robustez contra ataques adversariais. Introduz o ataque C&W. Critica defesas anteriores que eram "security through obscurity". Essencial para avaliacao de defesas.
+    </li>
+    <li>
+      <strong>Hu et al. (2019) — "Adversarial vulnerability from the perspective of decision boundary"</strong>
+      Conecta exemplos adversariais com a geometria das fronteiras de decisao. Explica por que regioes "adversariais" existem e como sao estruturadas matematicamente.
+    </li>
+    <li>
+      <strong>Barreno et al. (2010) — "A Taxonomy and Terminology of Adversarial Machine Learning"</strong>
+      Contexto mais amplo de ML adversarial, incluindo poisoning e outros tipos de ataque. Formaliza o threat model. Mais antigo, mas essencial para entender a terminologia do campo.
+    </li>
+  </ol>
+
+  <h3>Recursos adicionais</h3>
+  <table class="tb">
+    <thead><tr><th>Tipo</th><th>Recurso</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Survey recente</strong></td><td>Costa et al. (2024) — "How Deep Learning Sees the World: A Survey on Adversarial Attacks & Defenses" — IEEE Access 12: 61113-61136</td></tr>
+      <tr><td><strong>Framework de riscos</strong></td><td>MITRE ATLAS (atlas.mitre.org) — Taticas adversariais catalogadas para sistemas de IA</td></tr>
+      <tr><td><strong>Implementacoes</strong></td><td>ART (Adversarial Robustness Toolbox) — IBM Research — ferramentas para ataques e defesas</td></tr>
+      <tr><td><strong>Avaliacao</strong></td><td>RobustBench (robustbench.github.io) — leaderboard de robustez adversarial padronizado</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Perguntas de revisao</h3>
+  <div class="co co-b">
+    <strong>Para reflexao:</strong><br>
+    ① Quais sao as consequencias reais de um ataque de evasao bem-sucedido no sistema de percepcao de um carro autonomo?<br>
+    ② Por que modelos de deep learning sao intrinsecamente vulneraveis a exemplos adversariais? O que na sua matematica cria essa fragilidade?<br>
+    ③ Explique a diferenca entre um atacante white-box, gray-box e black-box. Qual e mais realistico em producao?<br>
+    ④ Quando um ataque <em>targeted</em> seria mais danoso do que um simplesmente untargeted? Construa um cenario.<br>
+    ⑤ Quais sao os limites de usar apenas acuracia como metrica de seguranca de um modelo?<br>
+    ⑥ O que determina a escolha do parametro ε? Que tradeoffs ele envolve?<br>
+    ⑦ Se um modelo e robusto a um tipo especifico de ataque, isso garante robustez a todos? Por que?<br>
+    ⑧ Por que um atacante poderia escolher <em>reduzir a confianca</em> em vez de forcar uma classificacao incorreta?
+  </div>
+</section>
+
+<footer class="ft">
+  <p>Baseado nos slides de Frederic Jurie — Security of AI, Chap 3 (Evasion Attacks Introduction) — ENSICAEN (Mars 2026)</p>
+  <p>Goodfellow et al. (FGSM, 2015) &middot; Carlini & Wagner (C&W, 2017) &middot; Madry et al. (PGD, 2018) &middot; Xu et al. (Adversarial T-Shirt, ECCV 2020)</p>
+</footer>
+</div>
