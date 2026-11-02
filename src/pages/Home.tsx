@@ -4,62 +4,86 @@ import { MODULES, type CourseModule } from '../lessons/catalog';
 import { QUESTIONS } from '../quiz/questions';
 import css from './home.css?inline';
 
-function ModuleCard({ module }: { module: CourseModule }) {
+const pad = (n: number) => String(n).padStart(2, '0');
+
+function ModuleRow({ module }: { module: CourseModule }) {
   const { number, title, lesson } = module;
   const body = (
     <>
-      <span className="chapter-number">Módulo {number}</span>
-      <h2>{title}</h2>
-      <div className="status">
-        <span className="status-icon">{lesson ? '✓' : '⏳'}</span>
-        <span>{lesson ? 'Disponível' : 'Em breve'}</span>
-      </div>
+      <span className="row-number">{pad(number)}</span>
+      <span className="row-title">{title}</span>
+      <span className="row-status">{lesson ? 'Ler' : 'Em breve'}</span>
     </>
   );
-  return lesson ? (
-    <Link to={`/aulas/${lesson.slug}`} className="card">
-      {body}
-    </Link>
-  ) : (
-    <div className="card disabled" aria-disabled="true">
-      {body}
-    </div>
+  return (
+    <li>
+      {lesson ? (
+        <Link to={`/aulas/${lesson.slug}`} className="row">
+          {body}
+        </Link>
+      ) : (
+        <div className="row disabled" aria-disabled="true">
+          {body}
+        </div>
+      )}
+    </li>
   );
 }
 
 export function Home() {
   useStyleSheet(css);
-  useDocumentTitle('Sécurité des IA - Aulas');
+  useDocumentTitle('Segurança em IA — Aulas');
+
+  const available = MODULES.filter((m) => m.lesson).length;
 
   return (
-    <>
-      <div className="blob blob-1" />
-      <div className="blob blob-2" />
-
-      <header>
-        <h1>Sécurité des IA</h1>
+    <div className="page">
+      <header className="masthead">
+        <p className="eyebrow">Material de estudo</p>
+        <h1>Segurança em IA</h1>
         <p className="subtitle">
-          Acesso rápido aos materiais, slides e anotações do curso de Segurança em Inteligência Artificial.
+          Aulas interativas sobre ataques adversariais, defesas, robustez certificada e privacidade em
+          machine learning.
         </p>
       </header>
 
-      <main className="grid-container">
-        {MODULES.map((m) => (
-          <ModuleCard key={m.number} module={m} />
-        ))}
-        <Link to="/quiz" className="card">
-          <span className="chapter-number">Revisão</span>
-          <h2>QCM d'entraînement</h2>
-          <div className="status">
-            <span className="status-icon">✓</span>
-            <span>{QUESTIONS.length} questions</span>
+      <main>
+        <section>
+          <div className="section-head">
+            <h2>Módulos</h2>
+            <span className="section-meta">
+              {available} de {MODULES.length} disponíveis
+            </span>
           </div>
-        </Link>
+          <ol className="modules">
+            {MODULES.map((m) => (
+              <ModuleRow key={m.number} module={m} />
+            ))}
+          </ol>
+        </section>
+
+        <section>
+          <div className="section-head">
+            <h2>Revisão</h2>
+          </div>
+          <Link to="/quiz" className="quiz">
+            <span>
+              <span className="quiz-title">QCM d'entraînement</span>
+              <span className="quiz-meta">{QUESTIONS.length} questions, por capítulo</span>
+            </span>
+            <span className="quiz-cta">Começar</span>
+          </Link>
+        </section>
       </main>
 
       <footer className="home-footer">
-        Material de estudo baseado no curso de Frédéric Jurie — ENSICAEN, 2026.
+        <h2>Sobre</h2>
+        <p>
+          Estas páginas nasceram como material de estudo pessoal, inspiradas no curso <i>Sécurité des IA</i>{' '}
+          da ENSICAEN (2A, S8, 2026), ministrado por Frédéric Jurie e Benjamin Sykes. As referências
+          de cada aula estão no rodapé da respectiva página.
+        </p>
       </footer>
-    </>
+    </div>
   );
 }
