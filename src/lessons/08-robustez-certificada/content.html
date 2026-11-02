@@ -1,0 +1,769 @@
+<div class="toc-progress" id="progress"></div>
+
+<nav class="topnav">
+  <div class="topnav-inner">
+    <a href="./" class="nav-link" data-route="/">← Índice</a>
+    <a href="#intro" class="nav-link active" data-section="intro">Intro</a>
+    <a href="#lipschitz" class="nav-link" data-section="lipschitz">1. Lipschitz</a>
+    <a href="#smoothing" class="nav-link" data-section="smoothing">2. Lissage Aleatoire</a>
+    <a href="#practice" class="nav-link" data-section="practice">3. Pratica</a>
+    <a href="#tradeoff" class="nav-link" data-section="tradeoff">4. Tradeoff</a>
+    <a href="#resumo" class="nav-link" data-section="resumo">Resumo</a>
+  </div>
+</nav>
+
+<div class="page">
+
+<!-- ════════════════════════════════════════ HERO -->
+<header class="hero" id="intro">
+  <div class="hero-eyebrow">Security of AI — Chapitre 8</div>
+  <h1>Robustez Certificada</h1>
+  <p class="hero-sub">Material completo cobrindo continuidade lipschitziana, lissage aleatoire (randomized smoothing), intervalos de confianca, e o tradeoff precisao-robustez. Baseado nos slides de Frederic Jurie, ENSICAEN (Mars 2026).</p>
+</header>
+
+<section>
+  <h3>A corrida armamentista e seus limites</h3>
+  <p>Ate agora neste curso, estudamos <strong>ataques</strong> (PGD, C&W, black-box) e <strong>defesas</strong> (adversarial training, feature squeezing). Mas existe um problema fundamental: cada nova defesa empirica e geralmente contornada por um novo ataque adaptativo alguns meses depois. Estamos presos num ciclo sem fim.</p>
+
+  <p>A avaliacao empirica — testar a robustez com um conjunto de ataques conhecidos — e <strong>necessaria mas insuficiente</strong> para garantir a seguranca de um sistema critico. A pergunta correta nao e "meu modelo resiste ao PGD?" mas sim: <strong>"posso provar matematicamente que nenhum ataque existe para esta entrada?"</strong></p>
+
+  <div class="co co-p">
+    <strong>A mudanca de paradigma:</strong> A comunidade cientifica se volta para metodos formais. Em vez de testar contra ataques especificos, o objetivo e fornecer uma <strong>garantia matematica</strong> — uma prova de que nenhuma perturbacao dentro de um raio &epsilon; pode mudar a predicao do modelo. E isso que chamamos de <strong>Robustez Certificada</strong> (Certified Robustness / Formal Verification).
+  </div>
+
+  <nav class="toc">
+    <div class="toc-title">Sumario</div>
+    <a href="#lipschitz">1. Continuidade Lipschitziana</a>
+    <a href="#lip-def" class="indent">1.1 Definicao e analogia</a>
+    <a href="#lip-cert" class="indent">1.2 Aplicacao a certificacao</a>
+    <a href="#lip-viz" class="indent">1.3 Simulacao: raio certificado via Lipschitz</a>
+    <a href="#lip-limits" class="indent">1.4 Limites da abordagem</a>
+    <a href="#smoothing">2. Lissage Aleatoire (Randomized Smoothing)</a>
+    <a href="#smooth-mech" class="indent">2.1 Mecanismo e construcao de g(x)</a>
+    <a href="#smooth-math" class="indent">2.2 Fundamento matematico</a>
+    <a href="#smooth-viz" class="indent">2.3 Simulacao: vote por amostragem ruidosa</a>
+    <a href="#practice">3. Da teoria a pratica</a>
+    <a href="#montecarlo" class="indent">3.1 Monte Carlo e intervalos de confianca</a>
+    <a href="#conf-viz" class="indent">3.2 Simulacao: impacto de N no intervalo de confianca</a>
+    <a href="#tradeoff">4. O tradeoff precisao-robustez</a>
+    <a href="#tradeoff-viz" class="indent">4.1 Simulacao: &sigma; vs precisao vs raio</a>
+    <a href="#advantages" class="indent">4.2 Vantagens e limites</a>
+    <a href="#resumo">5. Resumo e questoes</a>
+  </nav>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  1. LIPSCHITZ CONTINUITY                                       -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="lipschitz">
+  <span class="sn sn-c">1</span>
+  <h2>Continuidade Lipschitziana: limitando a variacao</h2>
+
+  <h3 id="lip-def">Analogia: o limite de velocidade</h3>
+  <p>Imagine um veiculo cuja posicao e modelada por uma funcao <span class="mi">f(x)</span>. Se a velocidade maxima e 130 km/h, podemos <strong>garantir</strong> que em 1 hora a posicao muda no maximo 130 km. Nao importa como o motorista dirige — a fisica limita a variacao.</p>
+
+  <p>A <strong>Constante de Lipschitz</strong> aplica este mesmo principio a redes neurais: ela define o limite superior do quanto a saida pode mudar quando a entrada muda.</p>
+
+  <div class="mb" style="position:relative;padding:24px 24px 40px">
+    <span style="display:inline">||f(<span style="color:var(--blue)">x</span>) &minus; f(<span style="color:var(--red)">y</span>)|| &le; L &middot; ||<span style="color:var(--blue)">x</span> &minus; <span style="color:var(--red)">y</span>||</span>
+    <div style="display:flex;justify-content:space-between;margin-top:14px;font-family:var(--sans);font-size:0.78rem;font-style:normal;line-height:1.4">
+      <div style="text-align:center;flex:1">
+        <div style="border-top:2px solid var(--coral);padding-top:4px;margin:0 12px">
+          <span style="color:var(--coral-d);font-weight:600">Variacao maxima na saida</span><br>
+          <span style="color:var(--text3)">(efeito no modelo)</span>
+        </div>
+      </div>
+      <div style="text-align:center;flex:1">
+        <div style="border-top:2px solid var(--teal);padding-top:4px;margin:0 12px">
+          <span style="color:var(--teal-d);font-weight:600">Perturbacao Adversarial</span><br>
+          <span style="color:var(--text3)">||&delta;|| = ||x &minus; y|| &le; &epsilon;</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p>Aqui, <span class="mi" style="color:var(--blue)">x</span> e a <strong>entrada original</strong> (imagem limpa) e <span class="mi" style="color:var(--red)">y = x + &delta;</span> e o <strong>adversarial sample</strong> (a imagem perturbada). Os termos da formula sao:</p>
+
+  <div class="co co-c" style="padding:14px 20px">
+    <table style="width:100%;border-collapse:collapse;font-size:0.88rem">
+      <tr style="border-bottom:1px solid var(--border-l)">
+        <td style="padding:8px 0;font-weight:600;width:40%">||<span style="color:var(--blue)">x</span> &minus; <span style="color:var(--red)">y</span>|| = ||&delta;||</td>
+        <td style="padding:8px 0"><strong style="color:var(--teal-d)">Adversarial Perturbation</strong> — a norma da perturbacao &delta; aplicada. Limitada por &epsilon;.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border-l)">
+        <td style="padding:8px 0;font-weight:600"><span style="color:var(--red)">y</span> = <span style="color:var(--blue)">x</span> + &delta;</td>
+        <td style="padding:8px 0"><strong style="color:var(--red-d)">Adversarial Sample</strong> — a imagem perturbada enviada ao modelo.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border-l)">
+        <td style="padding:8px 0;font-weight:600">||f(x) &minus; f(y)||</td>
+        <td style="padding:8px 0"><strong style="color:var(--coral-d)">Variacao maxima</strong> nos scores de saida causada pela perturbacao.</td>
+      </tr>
+      <tr>
+        <td style="padding:8px 0;font-weight:600">L</td>
+        <td style="padding:8px 0"><strong style="color:var(--purple-d)">Constante de Lipschitz</strong> — o "limite de velocidade" do modelo. Multiplica a perturbacao para bornar a saida.</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="co co-p">
+    <strong>Interpretacao chave:</strong> A variacao dos scores de saida do modelo e <strong>estritamente majorada</strong> por L vezes a amplitude da <strong>perturbacao adversarial</strong>. Quanto menor o L, mais "suave" e o modelo — e mais facil de certificar. A formula conecta diretamente o tamanho da perturbacao (&delta;) ao pior efeito possivel no modelo.
+  </div>
+
+  <h3 id="lip-cert">Aplicacao a certificacao de seguranca</h3>
+  <p>Suponha que calculamos a constante L do nosso modelo. O modelo preve "Gato" com logit 10 e "Cachorro" com logit 2. A <strong>margem de decisao</strong> e 8. Uma perturbacao de norma &epsilon; pode:</p>
+
+  <ol class="st st-c">
+    <li><strong>Diminuir o score de "Gato"</strong> em no maximo L &times; &epsilon;</li>
+    <li><strong>Aumentar o score de "Cachorro"</strong> em no maximo L &times; &epsilon;</li>
+    <li><strong>Aproximacao maxima entre os scores:</strong> 2L&epsilon;</li>
+  </ol>
+
+  <p>Para haver erro, o atacante precisa fechar toda a margem: <strong>2L&epsilon; > margem</strong>, ou seja, <strong>&epsilon; > margem / (2L)</strong>. Se &epsilon; nao ultrapassa esse valor, nenhum ataque pode mudar a predicao — a robustez e <strong>matematicamente certificada</strong>.</p>
+
+  <div class="mb" style="position:relative;padding:24px 24px 40px">
+    <span style="color:var(--teal)">&epsilon;<sub>certificado</sub></span> = <span style="color:var(--blue)">Margem</span> / (2 &middot; <span style="color:var(--purple)">L</span>)
+    <div style="display:flex;justify-content:space-between;margin-top:14px;font-family:var(--sans);font-size:0.78rem;font-style:normal;line-height:1.4">
+      <div style="text-align:center;flex:1">
+        <div style="border-top:2px solid var(--teal);padding-top:4px;margin:0 6px">
+          <span style="color:var(--teal-d);font-weight:600">Raio certificado</span><br>
+          <span style="color:var(--text3)">Perturbacao maxima toleravel</span>
+        </div>
+      </div>
+      <div style="text-align:center;flex:1">
+        <div style="border-top:2px solid var(--blue);padding-top:4px;margin:0 6px">
+          <span style="color:var(--blue-d);font-weight:600">Margem de decisao</span><br>
+          <span style="color:var(--text3)">f(x)<sub>gato</sub> &minus; f(x)<sub>cachorro</sub></span>
+        </div>
+      </div>
+      <div style="text-align:center;flex:1">
+        <div style="border-top:2px solid var(--purple);padding-top:4px;margin:0 6px">
+          <span style="color:var(--purple-d);font-weight:600">Constante de Lipschitz</span><br>
+          <span style="color:var(--text3)">"Limite de velocidade" do modelo</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="co co-c" style="padding:14px 20px">
+    <strong>Leitura da formula:</strong> O raio certificado e a <strong>margem de confianca do modelo</strong> dividida por <strong>duas vezes</strong> sua sensibilidade maxima (L). O fator 2 aparece porque a perturbacao pode <em>simultaneamente</em> diminuir o score da classe correta e aumentar o da classe rival — um efeito "tesoura" que fecha a margem dos dois lados ao mesmo tempo.
+  </div>
+
+  <h3>Exemplo resolvido: calculando &epsilon; passo a passo</h3>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-c">Exercicio</span><span class="ct">Qual e a perturbacao maxima toleravel? (Slides 8-9 do curso)</span></div>
+
+    <h4>Dados do problema</h4>
+    <div class="mg c3" style="margin-bottom:18px">
+      <div class="m"><div class="mv" style="color:var(--blue)">10</div><div class="ml">Logit "Gato" — f(x)<sub>gato</sub></div></div>
+      <div class="m"><div class="mv" style="color:var(--coral)">2</div><div class="ml">Logit "Cachorro" — f(x)<sub>cachorro</sub></div></div>
+      <div class="m"><div class="mv" style="color:var(--purple)">4</div><div class="ml">Constante de Lipschitz — L</div></div>
+    </div>
+
+    <h4>Passo 1 — Partir da formula de Lipschitz</h4>
+    <p style="font-size:0.9rem">Sabemos que <code>||f(x) &minus; f(y)|| &le; L &middot; ||x &minus; y||</code>, onde <strong style="color:var(--red)">y = x + &delta;</strong> e o adversarial sample e <strong>||&delta;|| &le; &epsilon;</strong> e a adversarial perturbation. Isso garante que a saida do modelo varia <strong>no maximo</strong> L &times; &epsilon; para qualquer perturbacao de norma &epsilon;.</p>
+
+    <h4>Passo 2 — Aplicar o pior caso nos dois scores (efeito tesoura)</h4>
+    <p style="font-size:0.9rem">No pior cenario, a <strong>mesma perturbacao</strong> afeta os dois logits em direcoes opostas:</p>
+    <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;margin:12px 0;font-size:0.88rem">
+      <div style="background:var(--blue-l);border-radius:var(--r);padding:12px;text-align:center">
+        <div style="font-weight:600;color:var(--blue-d)">Score "Gato" &darr;</div>
+        <div style="font-family:var(--mono);margin-top:4px">10 &minus; <span style="color:var(--purple)">L</span>&epsilon; = 10 &minus; 4&epsilon;</div>
+        <div style="font-size:0.78rem;color:var(--text3);margin-top:2px">Puxado para baixo</div>
+      </div>
+      <div style="font-size:1.4rem;color:var(--text3)">&larr; &epsilon; &rarr;</div>
+      <div style="background:var(--coral-l);border-radius:var(--r);padding:12px;text-align:center">
+        <div style="font-weight:600;color:var(--coral-d)">Score "Cachorro" &uarr;</div>
+        <div style="font-family:var(--mono);margin-top:4px">2 + <span style="color:var(--purple)">L</span>&epsilon; = 2 + 4&epsilon;</div>
+        <div style="font-size:0.78rem;color:var(--text3);margin-top:2px">Puxado para cima</div>
+      </div>
+    </div>
+    <p style="font-size:0.9rem">O <strong>fechamento total</strong> da margem e a soma dos dois efeitos:</p>
+    <div style="background:var(--bg2);border-radius:var(--r);padding:12px 18px;margin:8px 0;font-family:var(--mono);font-size:0.92rem;text-align:center">
+      Fechamento = <span style="color:var(--purple)">L</span>&epsilon; + <span style="color:var(--purple)">L</span>&epsilon; = 2<span style="color:var(--purple)">L</span>&epsilon; = 2 &times; 4 &times; &epsilon; = <strong>8&epsilon;</strong>
+    </div>
+
+    <h4>Passo 3 — Condicao para haver erro de classificacao</h4>
+    <p style="font-size:0.9rem">O atacante precisa fechar <strong>toda</strong> a margem original para inverter a predicao:</p>
+    <div style="background:var(--bg2);border-radius:var(--r);padding:12px 18px;margin:8px 0;font-family:var(--mono);font-size:0.92rem;text-align:center">
+      <span style="color:var(--blue)">Margem</span> = f(x)<sub>gato</sub> &minus; f(x)<sub>cachorro</sub> = 10 &minus; 2 = <strong style="color:var(--blue)">8</strong>
+    </div>
+    <p style="font-size:0.9rem">A condicao de erro e quando o fechamento <strong>ultrapassa</strong> a margem:</p>
+    <div style="background:var(--red-l);border-radius:var(--r);padding:12px 18px;margin:8px 0;font-family:var(--mono);font-size:0.92rem;text-align:center">
+      2L&epsilon; &gt; Margem &nbsp;&rArr;&nbsp; 8&epsilon; &gt; 8 &nbsp;&rArr;&nbsp; <strong style="color:var(--red)">&epsilon; &gt; 1</strong>
+    </div>
+
+    <h4>Passo 4 — Inversao: raio certificado</h4>
+    <p style="font-size:0.9rem">Se &epsilon; > 1 e <em>necessario</em> para causar erro, entao para todo <strong>&epsilon; &le; 1</strong> nenhum ataque pode mudar a predicao:</p>
+    <div style="background:var(--green-l);border-radius:var(--r);padding:14px 18px;margin:8px 0;text-align:center;border:1px solid var(--green)">
+      <div style="font-family:var(--mono);font-size:1.05rem">
+        &epsilon;<sub>certificado</sub> = <span style="color:var(--blue)">Margem</span> / (2 &middot; <span style="color:var(--purple)">L</span>) = <span style="color:var(--blue)">8</span> / (2 &times; <span style="color:var(--purple)">4</span>) = <strong style="color:var(--green);font-size:1.2rem">1.0</strong>
+      </div>
+      <div style="font-size:0.82rem;color:var(--green-d);margin-top:6px;font-weight:600">O modelo e certificado robusto para perturbacoes de norma ate 1.0</div>
+    </div>
+
+    <div class="co co-r" style="margin-top:16px;margin-bottom:0">
+      <strong>Atencao ao fator 2!</strong> O fator <strong>2</strong> no denominador e crucial — ele vem do fato que a perturbacao age <strong>dos dois lados</strong> simultaneamente (diminui o score correto E aumenta o rival). Esquecer esse fator e calcular Margem/L daria um raio otimista demais: 8/4 = 2.0 em vez de 1.0. Na prova do exame, isso custa pontos!
+    </div>
+  </div>
+
+  <h3 id="lip-viz">Simulacao: raio certificado via constante de Lipschitz</h3>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-c">Interativo</span><span class="ct">Calculo do raio certificado com a constante de Lipschitz</span></div>
+    <div class="sr">
+      <span class="sl">Score "Gato":</span>
+      <input type="range" min="5" max="20" value="10" step="0.5" id="lip-sc" data-input="updateLip">
+      <span class="sv" id="lip-sc-val">10.0</span>
+    </div>
+    <div class="sr">
+      <span class="sl">Score "Cachorro":</span>
+      <input type="range" min="0" max="15" value="2" step="0.5" id="lip-sc2" data-input="updateLip">
+      <span class="sv" id="lip-sc2-val">2.0</span>
+    </div>
+    <div class="sr">
+      <span class="sl">Constante L:</span>
+      <input type="range" min="1" max="50" value="4" step="1" id="lip-L" data-input="updateLip">
+      <span class="sv" id="lip-L-val">4</span>
+    </div>
+    <div style="margin:12px 0">
+      <canvas id="lip-canvas" width="500" height="280" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l)"></canvas>
+    </div>
+    <div class="mg c3">
+      <div class="m"><div class="mv" id="lip-margin">—</div><div class="ml">Margem de decisao</div></div>
+      <div class="m"><div class="mv" id="lip-radius">—</div><div class="ml">Raio certificado &epsilon;</div></div>
+      <div class="m"><div class="mv" id="lip-status">—</div><div class="ml">Nivel de protecao</div></div>
+    </div>
+    <p class="hn">Ajuste os scores e a constante L para ver como o raio certificado varia. L grande = raio pequeno.</p>
+  </div>
+
+  <h3>O que observar na simulacao</h3>
+  <ol class="st st-c">
+    <li><strong>Com L = 4 e margem = 8, o raio e 1.0</strong> Isso significa que perturbacoes de ate norma 1.0 sao matematicamente impossibilitadas de causar erro. E uma garantia forte. Observe no canvas como a "zona segura" (verde) e ampla ao redor do ponto.</li>
+    <li><strong>Aumente L para 20 ou 40</strong> O raio certificado despenca para 0.2 ou 0.1. A zona verde no canvas encolhe drasticamente. Mesmo com a mesma margem, um modelo com alta constante de Lipschitz oferece garantias fracas — a funcao "varia rapido demais".</li>
+    <li><strong>Aumente a margem (score "Gato" para 20, "Cachorro" para 0)</strong> Margem de 20 com L = 4 da raio certificado de 2.5 — excelente. Modelos com alta confianca nas suas predicoes sao mais faceis de certificar.</li>
+    <li><strong>Aproxime os dois scores (ex: 10 e 9)</strong> Margem de 1 com L = 4 da raio de apenas 0.125. Pontos proximos a fronteira de decisao sao quase impossiveis de certificar com Lipschitz — mesmo com L moderado.</li>
+  </ol>
+
+  <h3 id="lip-limits">O problema: a explosao da constante L</h3>
+  <p>Para um rede de neurones composta por camadas, a constante total se calcula multiplicando as constantes de cada camada:</p>
+
+  <div class="mb" style="position:relative;padding:24px 24px 40px">
+    <span style="color:var(--red)">L<sub>total</sub></span> &le; <span style="color:var(--coral)">L<sub>1</sub></span> &times; <span style="color:var(--coral)">L<sub>2</sub></span> &times; ... &times; <span style="color:var(--coral)">L<sub>n</sub></span>
+    <div style="display:flex;justify-content:space-between;margin-top:14px;font-family:var(--sans);font-size:0.78rem;font-style:normal;line-height:1.4">
+      <div style="text-align:center;flex:1">
+        <div style="border-top:2px solid var(--red);padding-top:4px;margin:0 10px">
+          <span style="color:var(--red-d);font-weight:600">Lipschitz global do rede</span><br>
+          <span style="color:var(--text3)">Borne superior (pior caso)</span>
+        </div>
+      </div>
+      <div style="text-align:center;flex:2">
+        <div style="border-top:2px solid var(--coral);padding-top:4px;margin:0 10px">
+          <span style="color:var(--coral-d);font-weight:600">Produto das constantes de cada camada</span><br>
+          <span style="color:var(--text3)">Camada linear: L = ||W||<sub>&sigma;</sub> (norma espectral) &nbsp;|&nbsp; ReLU: L = 1</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="co co-c" style="padding:14px 20px">
+    <strong>Por que produto e nao soma?</strong> Porque a rede e uma <strong>composicao</strong> de funcoes: f(x) = f<sub>n</sub>(f<sub>n-1</sub>(...f<sub>1</sub>(x))). Pela regra da cadeia de Lipschitz, a variacao se <strong>multiplica</strong> a cada camada. Se cada camada amplifica a variacao por um fator L<sub>i</sub>, o efeito total e o produto de todos esses fatores — cresce <strong>exponencialmente</strong> com a profundidade.
+  </div>
+
+  <p>A constante de uma camada linear <span class="mi">Wx + b</span> e a norma espectral de W (maior valor singular). A funcao ReLU tem L = 1 (nao amplifica variacoes). Mas ao multiplicar dezenas de camadas, mesmo com constantes moderadas (ex: 3 cada), o resultado explode: 3<sup>50</sup> &asymp; 7 &times; 10<sup>23</sup>.</p>
+
+  <div class="co co-r">
+    <strong>Consequencia pratica:</strong> Com L = 10<sup>7</sup> e margem de 8, o raio certificado seria &epsilon; = 4 &times; 10<sup>-7</sup>. Uma garantia matematicamente correta mas <strong>trivialmente inutil</strong> — nenhum ataque real usa perturbacoes tao microscopicas. A prova e valida, mas nao serve para nada na pratica.
+  </div>
+
+  <h3>Quando a abordagem Lipschitz ainda e util</h3>
+  <ol class="st st-c">
+    <li><strong>Redes pequenas e especializadas</strong> Para redes com poucas camadas (2-5 camadas), a constante de Lipschitz nao explode e os raios certificados podem ser uteis. Aplicacoes como controladores roboticos ou modelos de regressao simples se beneficiam diretamente.</li>
+    <li><strong>Regularizacao espectral durante o treino</strong> Tecnicas como Spectral Normalization forcam cada camada a ter L = 1, garantindo L_total = 1 para toda a rede. Isso sacrifica expressividade mas garante raios certificados significativos. Usado em GANs e modelos de seguranca critica.</li>
+    <li><strong>Base teorica para outros metodos</strong> A intuicao de Lipschitz fundamenta muitas outras tecnicas de certificacao. Entender por que a multiplicacao de camadas causa explosao ajuda a apreciar a elegancia do Randomized Smoothing, que contorna esse problema completamente.</li>
+    <li><strong>Verificacao exata via solveurs SMT</strong> Para redes muito pequenas (&lt;1000 neuronios), solveurs de satisfatibilidade podem calcular a constante de Lipschitz <strong>exata</strong> (nao a borne superior). Isso produz raios certificados otimos, mas nao escala para redes modernas.</li>
+  </ol>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  2. RANDOMIZED SMOOTHING                                       -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="smoothing">
+  <span class="sn sn-b">2</span>
+  <h2>Lissage Aleatoire: uma alternativa escalavel</h2>
+
+  <p>Diante da impossibilidade pratica de bornar a constante de Lipschitz em redes profundas, Cohen et al. (2019) propuseram uma abordagem radicalmente diferente: o <strong>Lissage Aleatoire</strong> (Randomized Smoothing).</p>
+
+  <div class="co co-b">
+    <strong>Ideia central:</strong> Em vez de certificar diretamente o modelo f (que varia demais), construimos um <strong>novo modelo g</strong> que, por construcao matematica, e suave e certificavel. O modelo g e obtido por <strong>voto majoritario</strong> sobre versoes ruidosas da entrada.
+  </div>
+
+  <h3 id="smooth-mech">Mecanismo: construindo o modelo lissado g(x)</h3>
+
+  <ol class="st st-b">
+    <li><strong>Gerar amostras ruidosas</strong> Em vez de avaliar a imagem x diretamente, criamos N copias adicionando ruido Gaussiano: x + &delta;, onde &delta; ~ N(0, &sigma;&sup2;I). Cada copia e ligeiramente diferente da original.</li>
+    <li><strong>Avaliar cada amostra com f</strong> O modelo base f classifica cada uma das N copias ruidosas. Algumas dao "Gato", outras "Cachorro", etc.</li>
+    <li><strong>Voto majoritario</strong> A predicao final g(x) e a classe que recebeu <strong>mais votos</strong>. Se 90% das copias dizem "Gato", g(x) = "Gato".</li>
+  </ol>
+
+  <h4>Decompondo a notacao &delta; ~ N(0, &sigma;&sup2;I)</h4>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-b">Notacao</span><span class="ct">O que significa cada simbolo na distribuicao do ruido</span></div>
+
+    <div class="mb" style="position:relative;padding:24px 24px 40px">
+      <span style="color:var(--coral)">&delta;</span> &nbsp;~&nbsp; <span style="color:var(--purple)">N</span>(<span style="color:var(--teal)">0</span>,&nbsp; <span style="color:var(--amber)">&sigma;&sup2;</span><span style="color:var(--blue)">I</span>)
+      <div style="display:flex;justify-content:space-between;margin-top:14px;font-family:var(--sans);font-size:0.78rem;font-style:normal;line-height:1.4">
+        <div style="text-align:center;flex:1">
+          <div style="border-top:2px solid var(--coral);padding-top:4px;margin:0 3px">
+            <span style="color:var(--coral-d);font-weight:600">Perturbacao</span><br>
+            <span style="color:var(--text3)">Vetor de ruido</span>
+          </div>
+        </div>
+        <div style="text-align:center;flex:0.6">
+          <div style="border-top:2px solid var(--text3);padding-top:4px;margin:0 3px">
+            <span style="color:var(--text2);font-weight:600">~</span><br>
+            <span style="color:var(--text3)">"segue a lei"</span>
+          </div>
+        </div>
+        <div style="text-align:center;flex:1">
+          <div style="border-top:2px solid var(--purple);padding-top:4px;margin:0 3px">
+            <span style="color:var(--purple-d);font-weight:600">Normal</span><br>
+            <span style="color:var(--text3)">Lei Gaussiana</span>
+          </div>
+        </div>
+        <div style="text-align:center;flex:0.8">
+          <div style="border-top:2px solid var(--teal);padding-top:4px;margin:0 3px">
+            <span style="color:var(--teal-d);font-weight:600">0</span><br>
+            <span style="color:var(--text3)">Media zero</span>
+          </div>
+        </div>
+        <div style="text-align:center;flex:0.8">
+          <div style="border-top:2px solid var(--amber);padding-top:4px;margin:0 3px">
+            <span style="color:var(--amber-d);font-weight:600">&sigma;&sup2;</span><br>
+            <span style="color:var(--text3)">Variancia</span>
+          </div>
+        </div>
+        <div style="text-align:center;flex:0.8">
+          <div style="border-top:2px solid var(--blue);padding-top:4px;margin:0 3px">
+            <span style="color:var(--blue-d);font-weight:600">I</span><br>
+            <span style="color:var(--text3)">Identidade</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="co co-b" style="padding:14px 20px;margin-top:0">
+      <table style="width:100%;border-collapse:collapse;font-size:0.88rem">
+        <tr style="border-bottom:1px solid var(--border-l)">
+          <td style="padding:8px 0;font-weight:600;width:20%;color:var(--coral-d)">&delta; (delta)</td>
+          <td style="padding:8px 0">O <strong>vetor de ruido</strong> que adicionamos a imagem. Tem a mesma dimensao que x (ex: para uma imagem 28&times;28, &delta; tem 784 componentes — um ruido para cada pixel).</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border-l)">
+          <td style="padding:8px 0;font-weight:600;color:var(--purple-d)">N (normal)</td>
+          <td style="padding:8px 0">A <strong>distribuicao Gaussiana</strong> (curva em sino). "~ N" se le "segue uma distribuicao normal". Isso significa que os valores de &delta; sao aleatorios mas seguem o formato classico da curva de Gauss.</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border-l)">
+          <td style="padding:8px 0;font-weight:600;color:var(--teal-d)">0 (media)</td>
+          <td style="padding:8px 0"><strong>Media zero</strong> — o ruido e centrado: em media, nao desloca a imagem em nenhuma direcao. Os valores positivos e negativos se equilibram. A amostra ruidosa "orbita" ao redor da imagem original.</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border-l)">
+          <td style="padding:8px 0;font-weight:600;color:var(--amber-d)">&sigma;&sup2; (variancia)</td>
+          <td style="padding:8px 0">Controla a <strong>intensidade do ruido</strong>. &sigma; pequeno (ex: 0.1) = pouco ruido, pixels quase iguais ao original. &sigma; grande (ex: 1.0) = muito ruido, imagem muito distorcida. E o <strong>botao principal</strong> do Randomized Smoothing.</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0;font-weight:600;color:var(--blue-d)">I (identidade)</td>
+          <td style="padding:8px 0"><strong>Matriz identidade</strong> — significa que o ruido e <strong>isotrope</strong> (igual em todas as direcoes). Cada pixel recebe ruido independente dos outros, com a mesma variancia &sigma;&sup2;. Nenhuma direcao e privilegiada — o ruido e uma "nuvem esferica" ao redor de x.</td>
+        </tr>
+      </table>
+    </div>
+
+    <p style="font-size:0.88rem;color:var(--text2);margin-top:14px;margin-bottom:0"><strong>Na pratica:</strong> para gerar uma amostra ruidosa, basta fazer <code>x_ruidoso = x + sigma * np.random.randn(*x.shape)</code> em Python. Cada chamada produz um &delta; diferente, e portanto uma copia ruidosa diferente de x. Repetindo N vezes, obtemos N "opinioes" do modelo sobre a vizinhanca de x.</p>
+  </div>
+
+  <h3>Intuicao geometrica: por que g(x) e mais robusto que f(x)?</h3>
+
+  <p>Esta e a ideia mais importante de todo o capitulo. Vamos visualizar a diferenca entre o modelo base <span class="mi">f</span> (fragil) e o modelo lissado <span class="mi">g</span> (robusto).</p>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-b">Interativo</span><span class="ct">Classificador base f(x) vs classificador lissado g(x)</span></div>
+    <div class="sr">
+      <span class="sl">Sigma (&sigma;):</span>
+      <input type="range" min="10" max="60" value="30" step="5" id="fg-sigma" data-input="updateFG">
+      <span class="sv" id="fg-sigma-val">0.30</span>
+    </div>
+    <div class="sr">
+      <span class="sl">Perturbacao &epsilon;:</span>
+      <input type="range" min="0" max="50" value="0" step="2" id="fg-eps" data-input="updateFG">
+      <span class="sv" id="fg-eps-val">0.00</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1.2fr 0.8fr;gap:16px;margin:12px 0">
+      <div>
+        <div style="font-size:13px;font-weight:600;text-align:center;margin-bottom:6px">Regioes de decisao de <span style="color:var(--coral)">f(x)</span> + nuvem Gaussiana</div>
+        <canvas id="fg-canvas-left" width="360" height="300" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l)"></canvas>
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:600;text-align:center;margin-bottom:6px">Proporcao de votos de <span style="color:var(--blue)">g(x)</span></div>
+        <canvas id="fg-canvas-right" width="240" height="300" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l)"></canvas>
+      </div>
+    </div>
+    <div class="mg c4">
+      <div class="m"><div class="mv" id="fg-f-pred">—</div><div class="ml">f(x) preve</div></div>
+      <div class="m"><div class="mv" id="fg-g-pred">—</div><div class="ml">g(x) preve</div></div>
+      <div class="m"><div class="mv" id="fg-pa">—</div><div class="ml">p<sub>A</sub> (azul)</div></div>
+      <div class="m"><div class="mv" id="fg-status">—</div><div class="ml">Certificado?</div></div>
+    </div>
+    <p class="hn">Esquerda: o ponto x (estrela) com as regioes coloridas de f e os circulos tracejados (niveis de probabilidade do ruido Gaussiano). Direita: barras mostrando a fracao de votos por classe apos integracao do ruido.</p>
+  </div>
+
+  <h3>O que observar na simulacao</h3>
+  <ol class="st st-b">
+    <li><strong>Com &epsilon; = 0, observe o painel esquerdo</strong> A estrela amarela (x) esta na regiao azul de f. Os circulos tracejados mostram as "camadas" da distribuicao Gaussiana centrada em x — a maior parte da massa de probabilidade cai na regiao azul, mas parte cai na verde, na vermelha, e na amarela. No painel direito, veja a barra "Azul" dominar — e o voto majoritario de g(x).</li>
+    <li><strong>Agora aumente &epsilon; lentamente (0 &rarr; 0.15)</strong> O ponto x' (perturbado) se desloca. Observe que <strong>f(x') pode mudar de classe</strong> (o ponto cai numa regiao diferente) — f e fragil! Mas olhe o painel direito: as barras de g quase nao mudam. A distribuicao Gaussiana se deslocou um pouco, mas a <strong>massa majoritaria</strong> continua azul. g(x') = g(x). O smoothing protege!</li>
+    <li><strong>Aumente &sigma; para 0.50+</strong> Os circulos tracejados se expandem. A nuvem cobre uma area maior — mais votos caem nas classes rivais. p<sub>A</sub> diminui (a barra azul encolhe). O raio certificado R = &sigma; &times; &Phi;<sup>-1</sup>(p<sub>A</sub>) pode aumentar inicialmente (mais &sigma;) mas depois colapsar (p<sub>A</sub> baixo demais).</li>
+    <li><strong>A licao central: f vs g</strong> O modelo base f tem fronteiras irregulares e frageis — um pixel a mais muda tudo. O modelo lissado g "integra" sobre essas irregularidades com o ruido Gaussiano. As fronteiras de g sao <strong>suaves e arredondadas</strong> — e exatamente isso que permite a certificacao matematica. A perturbacao desloca a Gaussiana, mas nao muda quem ganha o voto.</li>
+  </ol>
+
+  <div class="co co-b">
+    <strong>p<sub>A</sub> e p<sub>B</sub> na figura do professor:</strong> No painel direito, p<sub>A</sub> e a <strong>borne inferior</strong> da probabilidade da classe majoritaria (azul) e p<sub>B</sub> e a <strong>borne superior</strong> da segunda classe (verde). Mesmo que uma perturbacao encolha p<sub>A</sub> e aumente p<sub>B</sub>, enquanto p<sub>A</sub> > p<sub>B</sub>, o voto nao muda. O teorema de Neyman-Pearson quantifica exatamente <em>quanto</em> deslocamento e possivel antes que p<sub>A</sub> e p<sub>B</sub> se cruzem — e esse e o raio R.
+  </div>
+
+  <h3 id="smooth-math">Fundamento matematico: o raio R</h3>
+
+  <p>Baseando-se no <strong>Lema de Neyman-Pearson</strong>, Cohen et al. demonstraram que se o modelo lissado g classifica x na classe c com probabilidade p<sub>c</sub> > 0.5, entao g e certificado robusto num raio:</p>
+
+  <div class="mb" style="position:relative;padding:24px 24px 40px">
+    <span style="color:var(--teal)">R</span> = <span style="color:var(--coral)">&sigma;</span> &times; <span style="color:var(--purple)">&Phi;<sup>&minus;1</sup></span>(<span style="color:var(--blue)">p<sub>c</sub></span>)
+    <div style="display:flex;justify-content:space-between;margin-top:14px;font-family:var(--sans);font-size:0.78rem;font-style:normal;line-height:1.4">
+      <div style="text-align:center;flex:1">
+        <div style="border-top:2px solid var(--teal);padding-top:4px;margin:0 4px">
+          <span style="color:var(--teal-d);font-weight:600">Raio certificado</span><br>
+          <span style="color:var(--text3)">||x &minus; x'||<sub>2</sub> &le; R</span>
+        </div>
+      </div>
+      <div style="text-align:center;flex:1">
+        <div style="border-top:2px solid var(--coral);padding-top:4px;margin:0 4px">
+          <span style="color:var(--coral-d);font-weight:600">Intensidade do ruido</span><br>
+          <span style="color:var(--text3)">Desvio padrao do Gaussiano</span>
+        </div>
+      </div>
+      <div style="text-align:center;flex:1.2">
+        <div style="border-top:2px solid var(--purple);padding-top:4px;margin:0 4px">
+          <span style="color:var(--purple-d);font-weight:600">Funcao quantil</span><br>
+          <span style="color:var(--text3)">Inversa da CDF normal N(0,1)</span>
+        </div>
+      </div>
+      <div style="text-align:center;flex:1">
+        <div style="border-top:2px solid var(--blue);padding-top:4px;margin:0 4px">
+          <span style="color:var(--blue-d);font-weight:600">Prob. majoritaria</span><br>
+          <span style="color:var(--text3)">% de votos da classe c</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="co co-b" style="padding:14px 20px">
+    <table style="width:100%;border-collapse:collapse;font-size:0.88rem">
+      <tr style="border-bottom:1px solid var(--border-l)">
+        <td style="padding:8px 0;font-weight:600;width:25%;color:var(--teal-d)">R (raio)</td>
+        <td style="padding:8px 0">A <strong>norma maxima da perturbacao</strong> que o modelo lissado g tolera sem mudar de predicao. Dentro desta bola, a robustez e <strong>matematicamente garantida</strong>.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border-l)">
+        <td style="padding:8px 0;font-weight:600;color:var(--coral-d)">&sigma; (sigma)</td>
+        <td style="padding:8px 0">Controla a <strong>"largura" do lissage</strong>. &sigma; alto = mais ruido = nuvem maior = potencialmente R maior, mas tambem mais erro de classificacao. E o botao principal do tradeoff.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border-l)">
+        <td style="padding:8px 0;font-weight:600;color:var(--purple-d)">&Phi;<sup>-1</sup> (probit)</td>
+        <td style="padding:8px 0">Transforma uma probabilidade em um "score z". E <strong>crescente</strong>: p<sub>c</sub> = 0.5 &rarr; 0 (sem garantia), p<sub>c</sub> = 0.84 &rarr; &asymp;1, p<sub>c</sub> = 0.98 &rarr; &asymp;2. Mais unanime o voto, maior o raio.</td>
+      </tr>
+      <tr>
+        <td style="padding:8px 0;font-weight:600;color:var(--blue-d)">p<sub>c</sub> (prob.)</td>
+        <td style="padding:8px 0">A fracao das amostras ruidosas que votam na <strong>classe majoritaria</strong>. Deve ser > 0.5 para que a certificacao exista. Quanto mais perto de 1, mais forte a garantia.</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="co co-t">
+    <strong>Exemplo numerico:</strong> Com &sigma; = 0.5 e p<sub>c</sub> = 0.84 (84% dos votos), temos &Phi;<sup>-1</sup>(0.84) &asymp; 1, logo R = 0.5 &times; 1 = 0.5. <strong>Garantia formal:</strong> o modelo lissado retornara invariavelmente "Gato" para qualquer x' tal que ||x &minus; x'||<sub>2</sub> &le; 0.5.
+  </div>
+
+  <h3 id="smooth-viz">Simulacao: voto por amostragem ruidosa</h3>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-b">Interativo</span><span class="ct">Randomized Smoothing — voto majoritario com ruido Gaussiano</span></div>
+    <div class="sr">
+      <span class="sl">Sigma (&sigma;):</span>
+      <input type="range" min="5" max="80" value="25" step="5" id="rs-sigma" data-input="updateRS">
+      <span class="sv" id="rs-sigma-val">0.25</span>
+    </div>
+    <div class="sr">
+      <span class="sl">N amostras:</span>
+      <input type="range" min="10" max="500" value="100" step="10" id="rs-n" data-input="updateRS">
+      <span class="sv" id="rs-n-val">100</span>
+    </div>
+    <div class="br">
+      <button class="bt on" id="rs-btn-reset" data-click="updateRS">Reamostrar ruido</button>
+    </div>
+    <div style="margin:12px 0">
+      <canvas id="rs-canvas" width="500" height="320" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l)"></canvas>
+    </div>
+    <div class="mg c4">
+      <div class="m"><div class="mv" id="rs-votes-a">—</div><div class="ml">Votos "Azul"</div></div>
+      <div class="m"><div class="mv" id="rs-votes-b">—</div><div class="ml">Votos "Vermelho"</div></div>
+      <div class="m"><div class="mv" id="rs-pc">—</div><div class="ml">p<sub>c</sub> (majoritario)</div></div>
+      <div class="m"><div class="mv" id="rs-R">—</div><div class="ml">Raio R certificado</div></div>
+    </div>
+    <p class="hn">O ponto amarelo (estrela) e a entrada x. Os pontos pequenos sao as amostras ruidosas classificadas pelo modelo base f. O circulo verde e o raio certificado.</p>
+  </div>
+
+  <h3>O que observar na simulacao</h3>
+  <ol class="st st-b">
+    <li><strong>Com &sigma; = 0.25 e N = 100, observe os pontos ruidosos</strong> A nuvem de pontos pequenos ao redor da estrela amarela mostra as amostras ruidosas. Cada ponto e colorido pela classe que o modelo base f lhe atribui (azul ou vermelho). O voto majoritario determina g(x).</li>
+    <li><strong>Aumente &sigma; para 0.60+</strong> A nuvem de pontos se espalha mais. Mais pontos caem na regiao adversa (vermelho), entao p<sub>c</sub> diminui. Paradoxalmente, o raio R = &sigma; &times; &Phi;<sup>-1</sup>(p<sub>c</sub>) pode inicialmente aumentar (porque &sigma; sobe) mas depois colapsa (porque p<sub>c</sub> cai abaixo de 0.5 e a certificacao falha).</li>
+    <li><strong>Aumente N de 10 para 500</strong> Com N pequeno, o p<sub>c</sub> estimado flutua muito (clique "Reamostrar" varias vezes para ver). Com N = 500, o p<sub>c</sub> se estabiliza — a lei dos grandes numeros em acao. Mas N alto tambem significa N passagens no modelo (custo computacional).</li>
+    <li><strong>Clique "Reamostrar" repetidamente com N = 20</strong> Observe como p<sub>c</sub> varia entre 0.60 e 0.90 de uma amostragem a outra. Essa instabilidade e exatamente o problema que os intervalos de confianca resolvem (proxima secao).</li>
+  </ol>
+
+  <h3>Quando o Lissage Aleatoire ainda e util</h3>
+  <ol class="st st-b">
+    <li><strong>Qualquer arquitetura, sem restricao</strong> A prova matematica depende apenas da distribuicao do ruido e do resultado do voto — <strong>nao da arquitetura</strong>. Funciona com CNNs, Transformers, MLPs, qualquer coisa. O modelo base f e tratado como caixa-preta. Isso o torna o metodo de certificacao mais versatil que existe.</li>
+    <li><strong>Modelos de grande escala (ImageNet)</strong> Ao contrario de solveurs SMT que so funcionam com redes de &lt;1000 neuronios, o Randomized Smoothing certifica modelos com milhoes de parametros em datasets complexos. E a unica abordagem de certificacao que escala para problemas industriais.</li>
+    <li><strong>Certificacao probabilistica vs deterministica</strong> A garantia nao e deterministica (depende de intervalos de confianca), mas oferece raios <strong>significativamente maiores</strong> que a abordagem Lipschitz em redes profundas. Na pratica, R = 0.5 em L2 e uteis contra ataques reais.</li>
+    <li><strong>Aplicacoes de seguranca critica</strong> Em imageria medica, conducao autonoma, ou biometria, a capacidade de afirmar "com 99.9% de certeza, nenhuma perturbacao de norma &le; R pode alterar esta predicao" e inestimavel para certificacao regulatoria.</li>
+  </ol>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  3. FROM THEORY TO PRACTICE                                    -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="practice">
+  <span class="sn sn-a">3</span>
+  <h2>Da teoria a pratica: amostragem e intervalos de confianca</h2>
+
+  <h3 id="montecarlo">O problema da amostragem finita</h3>
+  <p>Em teoria, g(x) calcula a probabilidade <strong>exata</strong> p<sub>c</sub>. Na pratica, nao podemos gerar infinitas imagens ruidosas. Fazemos um <strong>sondagem</strong> (Monte Carlo):</p>
+
+  <ol class="st st-a">
+    <li><strong>Gerar N imagens ruidosas</strong> (ex: N = 10.000)</li>
+    <li><strong>Contar votos</strong> (ex: "Gato" ganha 8.400 vezes)</li>
+    <li><strong>Frequencia empirica:</strong> p&#770;<sub>c</sub> = 8400/10000 = 84%</li>
+  </ol>
+
+  <p>Mas 84% e apenas uma <strong>estimativa</strong>! Se repetirmos a amostragem, poderiamos obter 83% ou 85%. Para uma prova matematica, precisamos de certeza — nao de estimativas.</p>
+
+  <div class="co co-a">
+    <strong>A solucao: borne inferior do intervalo de confianca.</strong> Usamos a <strong>borne de Clopper-Pearson</strong> para encontrar o <strong>pior caso estatistico</strong>. Por exemplo: "Tenho 99.9% de certeza que a verdadeira probabilidade p<sub>c</sub> e superior a X." E esse valor X que injetamos na formula R = &sigma; &times; &Phi;<sup>-1</sup>(X).
+  </div>
+
+  <div class="mb" style="position:relative;padding:24px 24px 40px">
+    <span style="color:var(--red)">p&#818;</span> &asymp; <span style="color:var(--amber)">p&#770;<sub>c</sub></span> &minus; <span style="color:var(--purple)">Z</span> &times; &radic;(<span style="color:var(--amber)">p&#770;<sub>c</sub></span>(1 &minus; <span style="color:var(--amber)">p&#770;<sub>c</sub></span>) / <span style="color:var(--blue)">N</span>)
+    <div style="display:flex;justify-content:space-between;margin-top:14px;font-family:var(--sans);font-size:0.78rem;font-style:normal;line-height:1.4">
+      <div style="text-align:center;flex:1">
+        <div style="border-top:2px solid var(--red);padding-top:4px;margin:0 4px">
+          <span style="color:var(--red-d);font-weight:600">Pior caso</span><br>
+          <span style="color:var(--text3)">Valor injetado em R</span>
+        </div>
+      </div>
+      <div style="text-align:center;flex:1">
+        <div style="border-top:2px solid var(--amber);padding-top:4px;margin:0 4px">
+          <span style="color:var(--amber-d);font-weight:600">Estimativa observada</span><br>
+          <span style="color:var(--text3)">k votos / N amostras</span>
+        </div>
+      </div>
+      <div style="text-align:center;flex:1">
+        <div style="border-top:2px solid var(--purple);padding-top:4px;margin:0 4px">
+          <span style="color:var(--purple-d);font-weight:600">Fator de confianca</span><br>
+          <span style="color:var(--text3)">ex: Z = 3.29 para 99.9%</span>
+        </div>
+      </div>
+      <div style="text-align:center;flex:1.3">
+        <div style="border-top:2px solid var(--blue);padding-top:4px;margin:0 4px">
+          <span style="color:var(--blue-d);font-weight:600">N amostras</span><br>
+          <span style="color:var(--text3)">N grande &rarr; incerteza pequena</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="co co-a" style="padding:14px 20px">
+    <table style="width:100%;border-collapse:collapse;font-size:0.88rem">
+      <tr style="border-bottom:1px solid var(--border-l)">
+        <td style="padding:8px 0;font-weight:600;width:30%;color:var(--red-d)">p&#818; (p underline)</td>
+        <td style="padding:8px 0">A <strong>borne inferior</strong> — o pior cenario estatisticamente plausivel. E este valor conservador que usamos em R = &sigma; &times; &Phi;<sup>-1</sup>(<strong>p&#818;</strong>), <em>nunca</em> o p&#770;<sub>c</sub> otimista.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border-l)">
+        <td style="padding:8px 0;font-weight:600;color:var(--amber-d)">p&#770;<sub>c</sub> (p chapeu)</td>
+        <td style="padding:8px 0">A <strong>frequencia empirica</strong> — o que observamos na amostragem. Ex: 8400 votos "Gato" em 10000 &rarr; p&#770; = 84%. Pode flutuar entre amostragens.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border-l)">
+        <td style="padding:8px 0;font-weight:600;color:var(--purple-d)">Z (score z)</td>
+        <td style="padding:8px 0">Quanto queremos de <strong>certeza</strong>. Z = 1.96 &rarr; 95%, Z = 2.58 &rarr; 99%, Z = 3.29 &rarr; 99.9%. Mais certeza = margem maior = p&#818; mais baixo = R mais conservador.</td>
+      </tr>
+      <tr>
+        <td style="padding:8px 0;font-weight:600;color:var(--blue-d)">&radic;(.../N)</td>
+        <td style="padding:8px 0">O <strong>erro padrao</strong> — a incerteza da estimativa. Decresce com &radic;N. Precisamos <strong>4x mais amostras</strong> para reduzir a incerteza pela metade. E por isso que N = 10000 e muito melhor que N = 100.</td>
+      </tr>
+    </table>
+  </div>
+
+  <h3 id="conf-viz">Simulacao: impacto de N no intervalo de confianca</h3>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-a">Interativo</span><span class="ct">Como N amostras afeta a certificacao final</span></div>
+    <div class="sr">
+      <span class="sl">N (amostras):</span>
+      <input type="range" min="50" max="10000" value="1000" step="50" id="ci-n" data-input="updateCI">
+      <span class="sv" id="ci-n-val">1000</span>
+    </div>
+    <div class="sr">
+      <span class="sl">p&#770;<sub>c</sub> observado:</span>
+      <input type="range" min="51" max="99" value="85" step="1" id="ci-p" data-input="updateCI">
+      <span class="sv" id="ci-p-val">85%</span>
+    </div>
+    <div class="sr">
+      <span class="sl">Sigma (&sigma;):</span>
+      <input type="range" min="10" max="100" value="50" step="5" id="ci-sigma" data-input="updateCI">
+      <span class="sv" id="ci-sigma-val">0.50</span>
+    </div>
+    <div style="margin:12px 0">
+      <canvas id="ci-canvas" width="500" height="220" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l)"></canvas>
+    </div>
+    <div class="mg c4">
+      <div class="m"><div class="mv" id="ci-phat">—</div><div class="ml">p&#770;<sub>c</sub> observado</div></div>
+      <div class="m"><div class="mv" id="ci-plow">—</div><div class="ml">p&#818; (pior caso 99.9%)</div></div>
+      <div class="m"><div class="mv" id="ci-R-obs">—</div><div class="ml">R com p&#770;<sub>c</sub></div></div>
+      <div class="m"><div class="mv" id="ci-R-cert">—</div><div class="ml">R certificado (com p&#818;)</div></div>
+    </div>
+    <p class="hn">A barra laranja mostra p&#770;<sub>c</sub>; a barra vermelha escura mostra p&#818; (o pior caso). O raio certificado usa sempre p&#818;, nao p&#770;<sub>c</sub>.</p>
+  </div>
+
+  <h3>O que observar na simulacao</h3>
+  <ol class="st st-a">
+    <li><strong>Com N = 100 e p&#770; = 85%, observe a distancia entre as barras</strong> A barra p&#818; (pior caso) esta significativamente abaixo de p&#770;. A margem de incerteza e enorme. O raio certificado (usando p&#818;) e muito menor que o raio "otimista" (usando p&#770; diretamente). Com tao poucas amostras, perdemos muita garantia.</li>
+    <li><strong>Aumente N para 5000-10000</strong> As duas barras se aproximam. Com N = 10000, a diferenca entre p&#770; e p&#818; e minima (ex: 85% vs 83.5%). O raio certificado se aproxima do raio teorico. Mas lembre: N = 10000 significa 10000 passagens no modelo — custo computacional real.</li>
+    <li><strong>Baixe p&#770; para 55%</strong> Mesmo com N = 10000, p&#818; pode cair abaixo de 0.5. Quando isso acontece, &Phi;<sup>-1</sup>(p&#818;) se torna negativo e a certificacao <strong>falha completamente</strong> — nao podemos garantir nada. Pontos proximos a fronteira de decisao (p<sub>c</sub> &asymp; 0.5) sao os mais dificeis de certificar.</li>
+    <li><strong>Compare &sigma; = 0.1 vs &sigma; = 1.0 com o mesmo p&#770;</strong> Com &sigma; = 0.1, o raio R = 0.1 &times; &Phi;<sup>-1</sup>(p&#818;) e pequeno mesmo com p&#818; alto. Com &sigma; = 1.0, R e muito maior — mas na pratica, com tanto ruido, p<sub>c</sub> seria menor (o modelo erra mais). Esse e o tradeoff central.</li>
+  </ol>
+
+  <h3>Quando a amostragem Monte Carlo ainda e util</h3>
+  <ol class="st st-a">
+    <li><strong>Unico metodo pratico para modelos reais</strong> Nenhum metodo exato calcula p<sub>c</sub> analiticamente para redes profundas. Monte Carlo e a <strong>unica opcao viavel</strong>. Com N = 10000 e confianca de 99.9%, a penalidade no raio e de apenas ~3-5% comparado ao raio teorico.</li>
+    <li><strong>Paralelizavel em GPU</strong> As N avaliacoes sao independentes — podem ser executadas em paralelo em batch. Com uma GPU moderna, N = 10000 passagens de ResNet-50 levam ~20 segundos. O custo e administravel para aplicacoes offline (nao real-time).</li>
+    <li><strong>Ajuste de N ao nivel de risco</strong> Para uma aplicacao de triagem de fotos de ferias, N = 100 com confianca de 95% e suficiente. Para imageria medica, N = 100000 com confianca de 99.99% vale o custo computacional. O engenheiro calibra N ao contexto.</li>
+  </ol>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  4. TRADEOFF                                                   -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="tradeoff">
+  <span class="sn sn-t">4</span>
+  <h2>O tradeoff inevitavel: precisao vs robustez</h2>
+
+  <p>A seguranca em IA <strong>nao e gratuita</strong>. No Randomized Smoothing, a intensidade do ruido e controlada por &sigma;.</p>
+
+  <div class="co co-t">
+    <strong>&sigma; pequeno (ex: 0.1):</strong> A imagem e pouco alterada, o modelo permanece preciso (clean accuracy alta), mas o raio certificado R fica pequeno (pouca seguranca).<br><br>
+    <strong>&sigma; grande (ex: 1.0):</strong> O raio certificado pode se tornar grande (forte seguranca), mas a imagem fica tao ruidosa que o modelo nao enxerga mais nada. A precisao desmorona.
+  </div>
+
+  <h3 id="tradeoff-viz">Simulacao: &sigma; vs precisao vs raio certificado</h3>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-t">Interativo</span><span class="ct">Tradeoff Accuracy-Robustness no Randomized Smoothing</span></div>
+    <div class="sr">
+      <span class="sl">Sigma (&sigma;):</span>
+      <input type="range" min="5" max="150" value="50" step="5" id="to-sigma" data-input="updateTO">
+      <span class="sv" id="to-sigma-val">0.50</span>
+    </div>
+    <div style="margin:12px 0">
+      <canvas id="to-canvas" width="500" height="300" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l)"></canvas>
+    </div>
+    <div class="mg c3">
+      <div class="m"><div class="mv" id="to-acc">—</div><div class="ml">Clean Accuracy</div></div>
+      <div class="m"><div class="mv" id="to-R">—</div><div class="ml">Raio medio certificado</div></div>
+      <div class="m"><div class="mv" id="to-cert">—</div><div class="ml">% pontos certificaveis</div></div>
+    </div>
+    <p class="hn">A curva azul e a clean accuracy; a curva verde e o raio certificado medio. O ponto otimo depende da aplicacao.</p>
+  </div>
+
+  <h3>O que observar na simulacao</h3>
+  <ol class="st st-t">
+    <li><strong>Com &sigma; = 0.10, a precisao e ~95% mas o raio e ~0.05</strong> O modelo funciona quase como o original (sem ruido), mas a seguranca oferecida e irrisoria. Perturbacoes de norma 0.05 sao invisveis — qualquer ataque real usa &epsilon; > 0.1. A certificacao e tecnicamente correta mas praticamente inutil.</li>
+    <li><strong>Aumente &sigma; lentamente ate 0.50</strong> A precisao cai para ~75-80%, mas o raio sobe para ~0.3-0.5. Este e tipicamente o "sweet spot" reportado na literatura. O modelo perde alguma performance mas ganha garantias significativas contra perturbacoes reais.</li>
+    <li><strong>Com &sigma; > 1.0, observe o colapso</strong> A precisao despenca abaixo de 50% (o modelo e basicamente aleatorio com tanto ruido). O raio teorico e alto, mas como p<sub>c</sub> &asymp; 0.5, poucos pontos sao certificaveis. A maioria tem R = 0 ou proximo.</li>
+    <li><strong>Pense no papel do engenheiro</strong> Uma aplicacao medica critica pode aceitar 70% de precisao para ter R = 0.5. Uma app de fotos de ferias quer 95% de precisao e aceita R = 0. O &sigma; e um botao que o engenheiro ajusta ao contexto de risco.</li>
+  </ol>
+
+  <h3 id="advantages">Vantagens e limites do Randomized Smoothing</h3>
+
+  <table class="tb">
+    <thead><tr><th>Aspecto</th><th>Vantagem</th><th>Limite</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Arquitetura</strong></td>
+        <td><span class="tag tag-ok">Qualquer</span> — CNN, Transformer, etc.</td>
+        <td>Precisa de modelo base treinado com ruido (Gaussian augmentation)</td>
+      </tr>
+      <tr>
+        <td><strong>Escala</strong></td>
+        <td><span class="tag tag-ok">ImageNet</span> — funciona com modelos de milhoes de parametros</td>
+        <td>Solveurs SMT so funcionam com redes de &lt;1000 neuronios</td>
+      </tr>
+      <tr>
+        <td><strong>Custo</strong></td>
+        <td>Paralelizavel em GPU</td>
+        <td><span class="tag tag-w">N &gt; 1000</span> passagens por predicao</td>
+      </tr>
+      <tr>
+        <td><strong>Precisao</strong></td>
+        <td>Raios uteis na pratica (R &asymp; 0.5 em L2)</td>
+        <td><span class="tag tag-f">Tradeoff</span> — &sigma; alto degrada a clean accuracy</td>
+      </tr>
+      <tr>
+        <td><strong>Garantia</strong></td>
+        <td>Prova probabilistica (99.9%+)</td>
+        <td>Nao e deterministica (depende dos intervalos de confianca)</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  5. RESUMO                                                     -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="resumo">
+  <span class="sn sn-pk">5</span>
+  <h2>Resumo e questoes para reflexao</h2>
+
+  <ol class="st st-pk">
+    <li><strong>Avaliacao empirica tem limites</strong> Defesas avaliadas apenas contra ataques existentes sao regularmente contornadas. A historia mostra que novas defesas empiricas caem em meses.</li>
+    <li><strong>A robustez certificada oferece garantia formal</strong> Define um raio &epsilon; no qual a ausencia total de exemplos adversos e matematicamente provada. Nao depende de qual ataque o adversario usa.</li>
+    <li><strong>A abordagem Lipschitz e teoricamente valida mas praticalmente limitada</strong> A multiplicacao das constantes de camada produz bornes tao frouxas que os raios certificados sao trivialmente pequenos em redes profundas modernas.</li>
+    <li><strong>O Lissage Aleatoire e a alternativa robusta e escalavel</strong> Transforma um modelo deterministico em um classificador probabilistico, garantindo raios de certificacao uteis na pratica, ao preco de custo computacional elevado e reducao de precisao.</li>
+  </ol>
+
+  <h3>Questoes para reflexao (Q&A do curso)</h3>
+  <div class="co co-b">
+    <strong>1.</strong> Segundo a formula R = &sigma; &times; &Phi;<sup>-1</sup>(p<sub>c</sub>), se aumentarmos &sigma;, qual o impacto teorico no raio R? E qual o risco pratico sobre p<sub>c</sub>?<br><br>
+    <strong>2.</strong> Explique por que a funcao ReLU (que borda a inclinacao em 1) limita o crescimento da constante de Lipschitz local, mas nao impede a explosao da constante global do rede.<br><br>
+    <strong>3.</strong> No contexto de uma aplicacao industrial critica (ex: imageria medica), como voce justificaria a escolha de um modelo "lissado" certificado robusto apesar da queda na clean accuracy?
+  </div>
+
+  <h3>O exercicio do paradoxo visual</h3>
+  <div class="co co-pk">
+    <strong>A armadilha:</strong> Nos slides, vimos um circulo verde (zona certificada) que <strong>ultrapassa visivelmente</strong> a fronteira de decisao do modelo f(x), entrando na zona adversa. Mas a certificacao e valida! Por que?<br><br>
+    <strong>Resposta:</strong> O teorema certifica o <strong>modelo lissado g(x)</strong>, nao o modelo base f(x). A fronteira de decisao de g(x) e diferente — o ruido Gaussiano "empurrou" e "arredondou" a fronteira. Quando calculamos a verdadeira fronteira de g, o circulo verde nao a cruza nunca. As matematicas nao mentem — era nossa visualizacao que era enganosa!
+  </div>
+</section>
+
+<footer class="ft">
+  <p>Baseado nos slides de Frederic Jurie — Security of AI, Chap 8 — ENSICAEN (Mars 2026)</p>
+  <p>
+    <a href="https://arxiv.org/abs/1902.02918">Cohen et al., 2019 (Randomized Smoothing)</a> &middot;
+    <a href="https://blog.ml.cmu.edu/2020/09/25/generalizing-randomized-smoothing/">CMU Blog — Generalizing Randomized Smoothing</a> &middot;
+    <a href="https://arxiv.org/abs/1811.10104">Weng et al., 2018 (Lipschitz Certification)</a>
+  </p>
+</footer>
+
+</div>
