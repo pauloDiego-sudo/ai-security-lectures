@@ -1,0 +1,670 @@
+<div class="toc-progress" id="progress"></div>
+
+<nav class="topnav">
+  <div class="topnav-inner">
+    <a href="./" class="nav-link" data-route="/">← Índice</a>
+    <a href="#intro" class="nav-link active" data-section="intro">Intro</a>
+    <a href="#formulation" class="nav-link" data-section="formulation">1. Formulação</a>
+    <a href="#geo" class="nav-link" data-section="geo">2. Geometria</a>
+    <a href="#taxonomy" class="nav-link" data-section="taxonomy">3. Taxonomia</a>
+    <a href="#fgsm" class="nav-link" data-section="fgsm">4. FGSM</a>
+    <a href="#ifgsm" class="nav-link" data-section="ifgsm">5. I-FGSM / PGD</a>
+    <a href="#deepfool" class="nav-link" data-section="deepfool">6. DeepFool</a>
+    <a href="#cw" class="nav-link" data-section="cw">7. C&amp;W</a>
+    <a href="#uap" class="nav-link" data-section="uap">8. UAP / UAN</a>
+    <a href="#compare" class="nav-link" data-section="compare">Comparação</a>
+  </div>
+</nav>
+
+<div class="page">
+
+<!-- ═══════════ HERO ═══════════ -->
+<header class="hero" id="intro">
+  <div class="hero-eyebrow">Security of AI — Chapitre 4</div>
+  <h1>Ataques de Evasão White-Box</h1>
+  <p class="hero-sub">Material completo cobrindo fundamentos matemáticos, formulações de otimização, FGSM, I-FGSM, DeepFool, Carlini-Wagner e Perturbações Adversariais Universais. Baseado nos slides de Frédéric Jurie, ENSICAEN (Mars 2026).</p>
+</header>
+
+<section>
+  <h3>O que são ataques de evasão?</h3>
+  <p>Ataques adversariais são perturbações maliciosas e deliberadas aplicadas sobre dados de entrada com o objetivo de enganar um classificador, mantendo o significado semântico da entrada para um observador humano. Goodfellow et al. (2014) demonstraram que perturbações imperceptíveis podem enganar sistematicamente classificadores de estado-da-arte.</p>
+  <p>Essa vulnerabilidade não é exclusiva de redes profundas — ela é inerente à geometria de quase todos os classificadores estatísticos. Por isso, o melhor ponto de partida é entender as fontes matemáticas desse fenômeno antes de avançar para redes neurais complexas.</p>
+
+  <nav class="toc">
+    <div class="toc-title">Sumário</div>
+    <a href="#formulation">1. Formulação do Problema — o que é um ataque?</a>
+    <a href="#optform" class="indent">1.1 Três formulações de otimização</a>
+    <a href="#geo">2. Interpretação Geométrica — normas e projeções</a>
+    <a href="#geo-norms" class="indent">2.1 Simulação interativa das normas L_p</a>
+    <a href="#geo-linear" class="indent">2.2 Classificadores lineares e o conjunto Ω</a>
+    <a href="#taxonomy">3. Taxonomia de Ataques — targeted, untargeted, white/black-box</a>
+    <a href="#fgsm">4. FGSM — Fast Gradient Sign Method</a>
+    <a href="#fgsm-sim" class="indent">4.1 Simulação interativa do passo FGSM</a>
+    <a href="#ifgsm">5. I-FGSM e PGD — ataques iterativos</a>
+    <a href="#ifgsm-sim" class="indent">5.1 Simulação: FGSM vs I-FGSM vs PGD</a>
+    <a href="#deepfool">6. DeepFool — projeção iterativa mínima</a>
+    <a href="#deepfool-sim" class="indent">6.1 Simulação: linearização iterativa</a>
+    <a href="#cw">7. Carlini-Wagner — ataque por regularização</a>
+    <a href="#cw-sim" class="indent">7.1 Simulação: tradeoff lambda</a>
+    <a href="#uap">8. UAP e UAN — perturbações universais</a>
+    <a href="#uap-sim" class="indent">8.1 Visualização: fooling rates</a>
+    <a href="#compare">9. Comparação geral e cheat sheet</a>
+  </nav>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 1. FORMULAÇÃO                                               -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="formulation">
+  <span class="sn sn-b">1</span>
+  <h2>Formulação do Problema</h2>
+
+  <p>O objetivo de um ataque adversarial é perturbar uma entrada original <span class="mi">x₀</span> ∈ ℝ<sup>d</sup> (pertencente à classe verdadeira <span class="mi">C<sub>i</sub></span>) para um exemplo adversarial <span class="mi">x</span> que seja mal-classificado — preservando ao máximo o significado original.</p>
+
+  <h3>Ataque aditivo</h3>
+  <p>A formulação mais usada é a do <strong>ataque aditivo</strong>: define-se um vetor de perturbação <span class="mi">r</span> ∈ ℝ<sup>d</sup> tal que o exemplo adversarial é <span class="mi">x = x₀ + r</span>. Isso preserva a estrutura do espaço de entrada e oferece geometria interpretável — podemos medir a "magnitude" de r usando normas vetoriais.</p>
+
+  <div class="co co-b">
+    <strong>Ataque direcionado (targeted):</strong> <span class="mi">x</span> é classificado como uma classe alvo específica <span class="mi">C<sub>t</sub></span>. Exemplo: uma imagem de gato é manipulada para ser predita como cachorro.<br><br>
+    <strong>Ataque não-direcionado (untargeted):</strong> <span class="mi">x</span> é simplesmente afastado da classe original <span class="mi">C<sub>i</sub></span> — qualquer classificação errada serve.
+  </div>
+
+  <h3>Função discriminante e condição de sucesso</h3>
+  <p>Para classificadores multiclasse, cada classe possui uma função discriminante <span class="mi">g<sub>i</sub>(x)</span> (em redes neurais, tipicamente os logits antes do softmax). A condição de sucesso para um ataque direcionado à classe <span class="mi">C<sub>t</sub></span> é:</p>
+
+  <div class="mb">
+    <span class="mi">g<sub>t</sub>(x) ≥ g<sub>j</sub>(x)</span> para todo <span class="mi">j ≠ t</span>
+    <br>
+    equivalentemente: <span class="mi">max<sub>j≠t</sub>{g<sub>j</sub>(x) − g<sub>t</sub>(x)} ≤ 0</span>
+  </div>
+
+  <h3 id="optform">Três formulações de otimização</h3>
+
+  <h4>1. Ataque de norma mínima (Minimum-Norm Attack)</h4>
+  <div class="mb">
+    minimizar<sub>x</sub> ‖x − x₀‖<sub>p</sub><br>
+    <span style="font-size:0.85rem;color:var(--text2)">sujeito a: max<sub>j≠t</sub>{g<sub>j</sub>(x) − g<sub>t</sub>(x)} ≤ 0</span>
+  </div>
+  <p>Minimiza a magnitude da perturbação até que a fronteira seja cruzada. Não requer hiperparâmetros e tem interpretação geométrica elegante: é a projeção ortogonal de x₀ sobre a região adversarial.</p>
+
+  <h4>2. Ataque de perturbação máxima com budget (Maximum-Allowable Attack)</h4>
+  <div class="mb">
+    minimizar<sub>x</sub> max<sub>j≠t</sub>{g<sub>j</sub>(x) − g<sub>t</sub>(x)}<br>
+    <span style="font-size:0.85rem;color:var(--text2)">sujeito a: ‖x − x₀‖<sub>p</sub> ≤ η</span>
+  </div>
+  <p>O atacante tem um budget η fixo e tenta empurrar o exemplo o mais fundo possível na região alvo. É a base do FGSM e I-FGSM.</p>
+
+  <h4>3. Ataque por regularização (Regularization-Based Attack)</h4>
+  <div class="mb">
+    minimizar<sub>x</sub> ‖x − x₀‖<sub>p</sub> + λ · (max<sub>j≠t</sub>{g<sub>j</sub>(x) − g<sub>t</sub>(x)}<sup>+</sup>)
+  </div>
+  <p>O parâmetro λ controla o tradeoff. O <sup>+</sup> denota max(0, ·) — o penalizador zera quando a classe alvo já vence, então o otimizador foca apenas em minimizar a distância. É a base do ataque Carlini-Wagner.</p>
+
+  <div class="co co-a">
+    <strong>As três formulações são matematicamente equivalentes</strong> via relaxação Lagrangiana. Escolhendo η e λ adequados, as soluções são idênticas. A formulação de norma mínima é preferida para análise teórica por não requerer ajuste de hiperparâmetros.
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 2. GEOMETRIA                                                 -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="geo">
+  <span class="sn sn-p">2</span>
+  <h2>Interpretação Geométrica</h2>
+
+  <h3 id="geo-norms">Normas L_p e o significado para imagens</h3>
+
+  <p>A escolha da norma determina o "formato" da perturbação permitida e o tipo de invisibilidade que buscamos:</p>
+
+  <table class="tb">
+    <thead><tr><th>Norma</th><th>Mede</th><th>Efeito visual</th><th>Uso típico</th></tr></thead>
+    <tbody>
+      <tr><td><strong>L₀</strong></td><td>Número de pixels alterados</td><td>Poucos pixels, mas totalmente modificados</td><td>Ataques esparsos (JSMA)</td></tr>
+      <tr><td><strong>L₁</strong></td><td>Soma das alterações absolutas</td><td>Intermediário; convexo, substituto de L₀</td><td>Ataques esparsos diferenciáveis</td></tr>
+      <tr><td><strong>L₂</strong></td><td>Distância Euclidiana total</td><td>Ruído distribuído uniformemente</td><td>DeepFool, C&W</td></tr>
+      <tr><td><strong>L∞</strong></td><td>Máxima alteração em qualquer pixel</td><td>Todos os pixels mudam um pouquinho</td><td>FGSM, PGD</td></tr>
+    </tbody>
+  </table>
+
+  <div class="ic" id="geo-norms">
+    <div class="ch"><span class="cb cb-p">Interativo</span><span class="ct">Geometria das bolas L_p em 2D — região de perturbação permitida</span></div>
+    <div class="br">
+      <button class="bt on" data-click="setNorm" data-arg="inf" id="nb-inf">L∞ (FGSM/PGD)</button>
+      <button class="bt" data-click="setNorm" data-arg="2" id="nb-2">L₂ (DeepFool/C&W)</button>
+      <button class="bt" data-click="setNorm" data-arg="1" id="nb-1">L₁</button>
+      <button class="bt" data-click="setNorm" data-arg="0" id="nb-0">L₀ (esparso)</button>
+    </div>
+    <canvas id="norm-cv" width="540" height="300" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l)"></canvas>
+    <p class="hn" id="norm-desc">L∞: perturbação uniforme em todos os pixels — cada pixel muda no máximo ε. Cria um cubo centrado em x₀.</p>
+    <div class="mg c3">
+      <div class="m"><div class="mv" id="norm-shape">Cubo</div><div class="ml">Forma geométrica</div></div>
+      <div class="m"><div class="mv" id="norm-corner">Alta</div><div class="ml">Energia nos cantos</div></div>
+      <div class="m"><div class="mv" id="norm-sparse">Não</div><div class="ml">Favorece esparsidade</div></div>
+    </div>
+  </div>
+
+  <h3>O que observar na simulação das normas</h3>
+  <ol class="st st-p">
+    <li><strong>L∞ cria um quadrado (cubo em alta dimensão)</strong> A perturbação tem a mesma magnitude máxima em todas as direções. O FGSM e o PGD usam L∞ porque a solução ótima tem forma fechada elegante: basta seguir o sinal do gradiente.</li>
+    <li><strong>L₂ cria um círculo (esfera em alta dimensão)</strong> A perturbação é distribuída igualmente em todas as direções. Matematicamente mais tratável para projeções ortogonais — base do DeepFool. A solução mínima é a projeção ortogonal sobre a fronteira de decisão.</li>
+    <li><strong>L₁ cria um losango (octaedro em alta dimensão)</strong> Favorece perturbações esparsas mas convexas. Os "cantos" do losango estão nos eixos coordenados — a perturbação tende a concentrar energia em poucas dimensões. Útil como substituto diferenciável do L₀.</li>
+    <li><strong>L₀ mostra apenas pontos nos eixos</strong> O L₀ não é convexo nem diferenciável: tecnicamente só permite alterar um pixel por vez na sua forma mais pura. Ataques L₀ (como JSMA) escolhem pixels por saliência e os modificam ao máximo.</li>
+  </ol>
+
+  <h3 id="geo-linear">Conjunto de restrições Ω e projeção ortogonal</h3>
+  <p>Para um classificador linear (<span class="mi">g<sub>i</sub>(x) = w<sup>T</sup><sub>i</sub> x + w<sub>i,0</sub></span>), a região alvo Ω é um politopo convexo — a interseção de hiperplanos. O <strong>Teorema da Projeção</strong> garante que, para a norma L₂, o exemplo adversarial ótimo é exatamente a projeção ortogonal de x₀ sobre Ω:</p>
+
+  <div class="mb">
+    x* = argmin<sub>x∈Ω</sub> ‖x − x₀‖₂² &nbsp;⟹&nbsp; x* = P<sub>Ω</sub>(x₀)
+  </div>
+
+  <p>Para um classificador binário linear, a solução analítica exata é:</p>
+  <div class="mb">
+    x* = x₀ − <span style="font-size:0.9em">(w<sup>T</sup>x₀ + w₀) / ‖w‖₂²</span> · w
+  </div>
+
+  <div class="co co-p">
+    <strong>Por que o Teorema da Projeção importa?</strong> Ele é a fundação geométrica de quase todos os ataques modernos. Ele prova que o caminho mais curto para cruzar uma fronteira de decisão é se mover <em>perpendicularmente</em> a ela. Em termos práticos: o gradiente ∇<sub>x</sub>g(x) é sempre ortogonal às fronteiras de decisão (conjuntos de nível) — por isso o gradiente é a direção universal para gerar perturbações adversariais.
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 3. TAXONOMIA                                                 -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="taxonomy">
+  <span class="sn sn-a">3</span>
+  <h2>Taxonomia de Ataques</h2>
+
+  <h3>Targeted vs. Untargeted</h3>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:1rem 0">
+    <div class="co co-b" style="margin:0">
+      <strong>Direcionado (Targeted)</strong><br>
+      Meta: mover x₀ para uma classe alvo específica C<sub>t</sub>.<br>
+      Restrição: max<sub>j≠t</sub>{g<sub>j</sub>(x) − g<sub>t</sub>(x)} ≤ 0<br><br>
+      Mais difícil: o atacante tem um destino específico. Requer que a classe alvo vença todas as outras.
+    </div>
+    <div class="co co-r" style="margin:0">
+      <strong>Não-direcionado (Untargeted)</strong><br>
+      Meta: sair da classe verdadeira C<sub>i</sub>, qualquer erro serve.<br>
+      Restrição: g<sub>i</sub>(x) − min<sub>j≠i</sub>{g<sub>j</sub>(x)} ≤ 0<br><br>
+      Mais fácil: basta cruzar a fronteira mais próxima. O atacante só precisa do vizinho mais próximo.
+    </div>
+  </div>
+
+  <p>Note o uso do operador <strong>min</strong> na formulação untargeted estrita: isso força que a classe verdadeira seja a <em>menos</em> provável de todas — indo além de simplesmente ser superada por uma outra classe.</p>
+
+  <h3>White-Box vs. Black-Box</h3>
+
+  <table class="tb">
+    <thead><tr><th>Modelo de Ameaça</th><th>Conhecimento do Atacante</th><th>Acesso</th><th>Força</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>White-Box</strong> <span class="tag tag-f">Nosso foco</span></td>
+        <td>Arquitetura completa, pesos, gradientes, dados de treino</td>
+        <td>∇<sub>x</sub>g<sub>i</sub>(x) disponível</td>
+        <td>Ataque matemático ótimo; pior caso para o defensor</td>
+      </tr>
+      <tr>
+        <td><strong>Black-Box</strong></td>
+        <td>Apenas saídas (labels ou scores) via API</td>
+        <td>M consultas oracle</td>
+        <td>Treina modelo surrogate ĝ; transfere ataque</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="co co-a">
+    <strong>Princípio de Kerckhoffs aplicado a ML:</strong> Ataques white-box representam o pior caso — "assuma que o atacante conhece tudo". Se uma defesa não sobrevive ao white-box, ela não é robustez real. Muitas defesas aparentemente boas colapsam quando o atacante tem acesso total aos gradientes.
+  </div>
+
+  <h3>Por que ruído aleatório não funciona</h3>
+  <p>Se perturbações adversariais precisam ser tão pequenas, por que não basta adicionar ruído gaussiano aleatório <span class="mi">r ~ 𝒩(0, I)</span>? A matemática responde com precisão: em espaços de alta dimensão, a probabilidade de que um vetor aleatório se alinhe com a direção necessária para cruzar uma fronteira de decisão decai exponencialmente com a dimensão d.</p>
+
+  <div class="mb">
+    P[sucesso com ruído i.i.d.] ≤ <span style="font-size:0.85rem">‖w‖₂ / (ε·d√2π) · exp(−ε²d² / 2‖w‖₂²)</span>
+  </div>
+  <p>Conforme d → ∞, essa probabilidade tende a zero exponencialmente. Para "forçar" a passagem com ruído aleatório, seria necessário um σ que cresce exponencialmente com d — destruindo a imagem completamente. Por isso precisamos de métodos baseados em gradiente.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 4. FGSM                                                      -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="fgsm">
+  <span class="sn sn-c">4</span>
+  <h2>FGSM — Fast Gradient Sign Method</h2>
+
+  <p>Proposto por Goodfellow et al. (2014), o FGSM é o ataque mais simples e influente. A ideia é maximizar uma função de perda J(x; w) sujeita a um budget L∞ — e a solução em forma fechada é elegantíssima:</p>
+
+  <div class="mb">
+    x<sub>adv</sub> = x₀ + η · sign(∇<sub>x</sub>J(x₀; w))
+  </div>
+
+  <p>O FGSM é derivado matematicamente como uma <strong>aproximação por Taylor de primeira ordem</strong> da função de perda:</p>
+  <div class="mb" style="font-size:0.9rem">
+    maximizar<sub>r</sub> ∇<sub>x</sub>J(x₀; w)<sup>T</sup>r + J(x₀; w) &nbsp; sujeito a ‖r‖<sub>∞</sub> ≤ η
+  </div>
+  <p>A solução exata desse problema de maximização com restrição L∞ é <code>r* = η · sign(∇<sub>x</sub>J)</code> — cada componente do gradiente é substituído pelo seu sinal. Com budget L₂ em vez de L∞, a solução muda para normalizar o gradiente: <code>r* = η · ∇<sub>x</sub>J / ‖∇<sub>x</sub>J‖₂</code>.</p>
+
+  <div class="co co-c">
+    <strong>Detalhe crucial:</strong> O FGSM é um ataque de <em>um único passo</em>. Ele computa o gradiente uma vez e dá um salto de tamanho η. Isso é computacionalmente barato, mas significa que pode "errar" a fronteira (muito curto) ou "ultrapassar" (muito longo). Os ataques iterativos (I-FGSM, PGD) resolvem exatamente esse problema.
+  </div>
+
+  <h3 id="fgsm-sim">Simulação interativa: passo FGSM em 2D</h3>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-c">Interativo</span><span class="ct">FGSM — um passo no espaço de features 2D</span></div>
+    <div class="sr">
+      <span class="sl">Budget η =</span>
+      <input type="range" min="1" max="60" value="15" step="1" id="fgsm-eps" data-input="updateFGSM">
+      <span class="sv" id="fgsm-eps-v">0.15</span>
+    </div>
+    <div class="br">
+      <button class="bt on" data-click="setFGSMMode" data-arg="untarg" id="fgsm-btn-u">Não-direcionado</button>
+      <button class="bt" data-click="setFGSMMode" data-arg="targ" id="fgsm-btn-t">Direcionado (C₂)</button>
+    </div>
+    <canvas id="fgsm-cv" width="540" height="340" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l)"></canvas>
+    <div class="mg c3">
+      <div class="m"><div class="mv" id="fgsm-dist">—</div><div class="ml">‖r‖∞ (perturbação)</div></div>
+      <div class="m"><div class="mv" id="fgsm-class">—</div><div class="ml">Classe predita</div></div>
+      <div class="m"><div class="mv" id="fgsm-status">—</div><div class="ml">Ataque bem-sucedido?</div></div>
+    </div>
+    <p class="hn">x₀ está na região C₁ (azul). A seta mostra a direção sign(∇J). O ponto vermelho é x_adv = x₀ + η·sign(∇J).</p>
+  </div>
+
+  <h3>O que observar na simulação do FGSM</h3>
+  <ol class="st st-c">
+    <li><strong>Mova o slider de η de 0 para a direita</strong> Com η muito pequeno, o ponto adversarial (vermelho) permanece na mesma região que x₀. Existe um "valor crítico" de η a partir do qual a fronteira é cruzada — esse é o ε mínimo para o ataque funcionar nesse ponto específico.</li>
+    <li><strong>Compare direcionado vs não-direcionado</strong> No modo não-direcionado, a seta aponta na direção que maximiza a perda da classe verdadeira — pode ir para qualquer outra classe. No modo direcionado, a seta aponta em direção à classe C₂ — a direção é diferente e pode exigir η maior.</li>
+    <li><strong>Observe o "overshoot" com η alto</strong> Com η muito grande, o ponto adversarial pode cruzar regiões intermediárias e cair em uma classe inesperada. Isso ilustra por que o FGSM um-passo pode ser imprevisível — e por que I-FGSM com passos menores é mais controlado.</li>
+    <li><strong>A direção da seta não muda</strong> O sinal do gradiente é computado apenas uma vez em x₀. Mesmo com η grande, a direção do passo é sempre a mesma — apenas o comprimento varia. Isso é a principal limitação do FGSM em relação ao I-FGSM, que recalcula o gradiente a cada passo.</li>
+  </ol>
+
+  <h3>Quando o FGSM ainda é útil</h3>
+  <ol class="st st-t">
+    <li><strong>Geração rápida de dados adversariais para treino (Free AT)</strong> O custo computacional mínimo do FGSM (apenas um backprop) o torna atrativo para gerar exemplos adversariais durante o treinamento. Shafahi et al. (2019) usaram FGSM dentro do loop de treino com overhead quase zero.</li>
+    <li><strong>Benchmark inicial de robustez</strong> Se um modelo falha contra FGSM, é frágil demais para qualquer uso em produção. O FGSM serve como triagem rápida: se o modelo passa no FGSM, testa com PGD; mas se falha no FGSM, há problemas fundamentais.</li>
+    <li><strong>Ataques em tempo real com latência mínima</strong> Cenários onde o atacante tem pouquíssimo tempo de computação (ex: ataques a sistemas embarcados, edge devices) tornam o FGSM a única opção prática.</li>
+    <li><strong>Geração de exemplos para data augmentation</strong> Em pipelines de treinamento onde o custo importa, FGSM pode aumentar a diversidade do dataset com perturbações adversariais com custo marginal de um backward pass a mais.</li>
+  </ol>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 5. I-FGSM / PGD                                             -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="ifgsm">
+  <span class="sn sn-b">5</span>
+  <h2>I-FGSM e PGD — Ataques Iterativos</h2>
+
+  <h3>O problema do FGSM e a solução iterativa</h3>
+  <p>O FGSM tem dois problemas práticos: (1) pixels podem ultrapassar os valores válidos [0,1] ou [0,255], e (2) um único passo grande pode ser menos eficaz do que vários passos menores que recalculam o gradiente. O I-FGSM (Basic Iterative Method — BIM) resolve isso:</p>
+
+  <div class="mb">
+    x<sup>(k+1)</sup> = Clip<sub>ε,[0,1]</sub>{ x<sup>(k)</sup> + α · sign(∇<sub>x</sub>J(x<sup>(k)</sup>; w)) }
+  </div>
+
+  <p>A função <code>Clip<sub>ε,[0,1]</sub></code> projeta de volta para a bola L∞ de raio ε em torno de x₀, garantindo que a perturbação nunca ultrapasse o budget e que os valores de pixel permaneçam válidos.</p>
+
+  <h3>PGD — o adversário universal de primeira ordem</h3>
+  <p>O Projected Gradient Descent (Madry et al., 2018) adiciona uma melhoria crucial ao I-FGSM: <strong>inicialização aleatória</strong> dentro da bola ε antes de iniciar as iterações:</p>
+
+  <div class="mb">
+    x<sup>0</sup> = x₀ + ruído uniforme(−ε, ε)
+    <br>
+    x<sup>t+1</sup> = Π<sub>x₀+S</sub> { x<sup>t</sup> + α · sign(∇<sub>x</sub>L(θ, x<sup>t</sup>, y)) }
+  </div>
+
+  <p>O operador Π<sub>x₀+S</sub> projeta sobre a bola L∞ de raio ε ∩ [0,1]<sup>d</sup>. A inicialização aleatória contorna o problema de "gradient masking" — maxima locais da função de perda que enganam ataques determinísticos.</p>
+
+  <table class="tb">
+    <thead><tr><th>Algoritmo</th><th>Inicialização</th><th>Passos</th><th>Força</th><th>Custo</th></tr></thead>
+    <tbody>
+      <tr><td><strong>FGSM</strong></td><td>x₀</td><td>1</td><td><span class="tag tag-w">Fraco</span></td><td>1× backprop</td></tr>
+      <tr><td><strong>I-FGSM</strong></td><td>x₀</td><td>K iterações</td><td><span class="tag tag-w">Médio</span></td><td>K× backprop</td></tr>
+      <tr><td><strong>PGD</strong></td><td>Aleatória ∈ bola ε</td><td>K iterações + restarts</td><td><span class="tag tag-f">Forte</span></td><td>K×R× backprop</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="ifgsm-sim">Simulação: comparando os três ataques iterativos</h3>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-b">Interativo</span><span class="ct">FGSM vs I-FGSM vs PGD — trajetória do ataque</span></div>
+    <div class="sr">
+      <span class="sl">Budget ε =</span>
+      <input type="range" min="3" max="50" value="20" step="1" id="iter-eps" data-input="updateIter">
+      <span class="sv" id="iter-eps-v">0.20</span>
+    </div>
+    <div class="sr">
+      <span class="sl">Passos K =</span>
+      <input type="range" min="1" max="20" value="5" step="1" id="iter-k" data-input="updateIter">
+      <span class="sv" id="iter-k-v">5</span>
+    </div>
+    <div class="br">
+      <button class="bt on" data-click="setIterMode" data-arg="fgsm" id="iter-fgsm">FGSM (1 passo)</button>
+      <button class="bt" data-click="setIterMode" data-arg="ifgsm" id="iter-ifgsm">I-FGSM</button>
+      <button class="bt" data-click="setIterMode" data-arg="pgd" id="iter-pgd">PGD (rand. init)</button>
+    </div>
+    <canvas id="iter-cv" width="540" height="340" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l)"></canvas>
+    <div class="mg c4">
+      <div class="m"><div class="mv" id="iter-passos">—</div><div class="ml">Passos dados</div></div>
+      <div class="m"><div class="mv" id="iter-perturb">—</div><div class="ml">‖r‖∞ final</div></div>
+      <div class="m"><div class="mv" id="iter-loss">—</div><div class="ml">Loss final</div></div>
+      <div class="m"><div class="mv" id="iter-status">—</div><div class="ml">Sucesso?</div></div>
+    </div>
+    <p class="hn">Linhas coloridas mostram a trajetória de cada método. O quadrado pontilhado é a bola L∞ de raio ε.</p>
+  </div>
+
+  <h3>O que observar na simulação dos ataques iterativos</h3>
+  <ol class="st st-b">
+    <li><strong>FGSM vs I-FGSM com mesmo ε</strong> O FGSM dá um salto único até o canto do quadrado de perturbação. O I-FGSM faz K passos menores (α ≈ ε/K), mas recalcula o gradiente a cada passo. Com curvas de decisão não-lineares, os k gradientes locais "navegam" a fronteira de forma mais precisa — a trajetória do I-FGSM é mais sinuosa mas termina mais profundo na região adversarial.</li>
+    <li><strong>Aumente K gradualmente (1 → 20)</strong> Com K=1, I-FGSM é idêntico ao FGSM. Com K crescendo, a trajetória fica mais refinada e a loss final aumenta. Após ~10 passos, o ganho marginal cai — ponto de retorno decrescente. Na prática, K=7 é o mínimo recomendado e K=20 cobre quase todos os casos.</li>
+    <li><strong>Veja a diferença PGD vs I-FGSM</strong> O PGD começa de um ponto aleatório dentro da bola ε. Isso faz o ponto de partida variar a cada execução — clique várias vezes para ver trajetórias diferentes. Algumas trajetórias do PGD encontram regiões adversariais que o I-FGSM (que começa de x₀) nunca encontraria.</li>
+    <li><strong>Observe o "clipping" na borda do quadrado</strong> Quando um passo leva o ponto para fora da bola ε, ele é projetado de volta (Clip). Essa projeção é visível quando a trajetória "bate" na borda do quadrado e desliza pela parede. Sem esse clipping, a perturbação ultrapassaria o budget.</li>
+  </ol>
+
+  <h3>Quando I-FGSM / PGD ainda são úteis</h3>
+  <ol class="st st-b">
+    <li><strong>PGD como ataque de referência universal (benchmark)</strong> O PGD é considerado "o adversário mais forte de primeira ordem". Qualquer defesa deve ser testada contra PGD com muitos passos e restarts. Se passar no PGD, é robustez genuína; se falhar, não é.</li>
+    <li><strong>Adversarial Training de qualidade</strong> Para treinar modelos verdadeiramente robustos, usa-se PGD como gerador de exemplos adversariais no loop de treino (Madry et al.). FGSM é insuficiente — modelos treinados com FGSM são facilmente quebrados por PGD.</li>
+    <li><strong>Avaliações de segurança rigorosas</strong> Auditorias de sistemas críticos (saúde, segurança, automotivo) devem usar PGD como parte do protocolo de teste. É o método mais calibrado para avaliar o pior caso dentro de um budget ε.</li>
+    <li><strong>Ataques práticos de alta qualidade</strong> Quando o atacante tem tempo de computação disponível (diferente de ataques em tempo real), PGD-20 com 5 restarts encontra exemplos adversariais muito mais eficazes que FGSM com custo proporcional a 100× backprops.</li>
+  </ol>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 6. DEEPFOOL                                                  -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="deepfool">
+  <span class="sn sn-p">6</span>
+  <h2>DeepFool — Projeção Iterativa Mínima</h2>
+
+  <p>DeepFool (Moosavi-Dezfooli et al., 2016) é a generalização do ataque de norma mínima L₂ para fronteiras não-lineares. Em vez de tentar resolver o problema globalmente (impossível para redes neurais), usa uma linearização iterativa.</p>
+
+  <h3>O "truque DeepFool" — linearização local</h3>
+  <p>Para uma fronteira não-linear <span class="mi">g(x) = 0</span>, a estratégia é: a cada iteração, fazer uma expansão de Taylor de primeira ordem para <em>fingir</em> que a rede é localmente linear, aplicar o Teorema da Projeção (solução analítica), dar um passo, e repetir:</p>
+
+  <div class="mb">
+    x<sup>(k+1)</sup> = x<sup>(k)</sup> − <span style="font-size:0.85rem">g(x<sup>(k)</sup>) / ‖∇<sub>x</sub>g(x<sup>(k)</sup>)‖₂²</span> · ∇<sub>x</sub>g(x<sup>(k)</sup>)
+  </div>
+
+  <p>A fórmula é idêntica ao ataque analítico de dois classificadores lineares — mas aplicada iterativamente com gradientes recalculados a cada passo. O coeficiente <span class="mi">g(x<sup>(k)</sup>) / ‖∇<sub>x</sub>g‖₂²</span> é a distância à fronteira linearizada atual.</p>
+
+  <div class="co co-p">
+    <strong>Interpretação geométrica:</strong> Cada iteração projeta o ponto atual sobre a <em>versão linearizada</em> da fronteira mais próxima. Como a fronteira real é curva, a projeção linear "aponta para fora" da fronteira real — e com várias correções, converge para o ponto mais próximo real. É essencialmente o método de Newton aplicado ao problema de projeção.
+  </div>
+
+  <h3 id="deepfool-sim">Simulação: linearização iterativa do DeepFool</h3>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-p">Interativo</span><span class="ct">DeepFool — linearização e projeção iterativa</span></div>
+    <div class="br">
+      <button class="bt on" data-click="dfStep" id="df-step-btn">▶ Próximo passo</button>
+      <button class="bt" data-click="dfReset" id="df-reset-btn">↺ Reiniciar</button>
+    </div>
+    <canvas id="df-cv" width="540" height="340" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l)"></canvas>
+    <div class="mg c4">
+      <div class="m"><div class="mv" id="df-iter">0</div><div class="ml">Iteração</div></div>
+      <div class="m"><div class="mv" id="df-dist">—</div><div class="ml">‖x - x₀‖₂</div></div>
+      <div class="m"><div class="mv" id="df-g">—</div><div class="ml">g(x) atual</div></div>
+      <div class="m"><div class="mv" id="df-status">C₁</div><div class="ml">Classe atual</div></div>
+    </div>
+    <p class="hn">Linha azul tracejada = hiperplano linearizado local. Seta = direção de projeção. A cada passo, o gradiente é recalculado.</p>
+  </div>
+
+  <h3>O que observar na simulação do DeepFool</h3>
+  <ol class="st st-p">
+    <li><strong>Passo a passo: observe o hiperplano azul se reorientar</strong> A linha tracejada representa a aproximação linear local da fronteira de decisão em torno do ponto atual. A cada iteração, o ponto se move e o hiperplano é recalculado. Em regiões com alta curvatura, os passos iniciais "erram" a fronteira real e os seguintes corrigem o erro.</li>
+    <li><strong>A distância total é menor que qualquer outro ataque</strong> Por design, o DeepFool encontra a perturbação mínima em norma L₂. Compare mentalmente com o FGSM — que usa o budget η fixo (frequentemente maior que o necessário). O DeepFool "chega" na fronteira sem desperdiçar perturbação.</li>
+    <li><strong>Compare o número de passos vs precisão</strong> Com 1-2 passos, o ponto pode não cruzar a fronteira real (a linearização é inacurada). Com 5-10 passos, a convergência está completa. Em redes neurais reais, 50-100 iterações são comuns — justamente porque a curvatura das DNNs é alta.</li>
+    <li><strong>O valor de g(x) se aproxima de zero</strong> g(x) representa a distância com sinal em relação à fronteira (positivo = classe errada, negativo = classe certa). Acompanhe como g(x) vai de um valor positivo (bem dentro de C₁) até cruzar zero (fronteira). O ataque para quando cruza com uma margem pequena de overshoot α=1.02.</li>
+  </ol>
+
+  <h3>Quando o DeepFool ainda é útil</h3>
+  <ol class="st st-p">
+    <li><strong>Medição de robustez formal</strong> O DeepFool encontra a perturbação mínima necessária para enganar o modelo — o "raio de robustez" em L₂. Isso dá uma métrica objetiva de robustez comparável entre modelos, independente de budget arbitrário.</li>
+    <li><strong>Construção de Perturbações Adversariais Universais</strong> O algoritmo UAP (Moosavi-Dezfooli et al., 2017) usa DeepFool como subrotina para encontrar perturbações por imagem que são agregadas em uma UAP global. Sem DeepFool, o UAP original não existiria.</li>
+    <li><strong>Análise de fronteiras de decisão</strong> Pesquisadores usam DeepFool para mapear a geometria das fronteiras de decisão de DNNs — entender onde estão as "paredes" do classificador e quão próximas estão dos dados naturais.</li>
+    <li><strong>Transferência Black-Box de alta qualidade</strong> Exemplos adversariais gerados pelo DeepFool (perturbação mínima) tendem a ser mais transferíveis entre arquiteturas do que exemplos com perturbações grandes — porque ficam mais próximos do manifold de dados naturais.</li>
+  </ol>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 7. C&W                                                       -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="cw">
+  <span class="sn sn-a">7</span>
+  <h2>Carlini-Wagner — Ataque por Regularização</h2>
+
+  <p>O ataque C&W (Carlini & Wagner, 2017) é considerado o ataque mais poderoso e preciso para redes neurais. A ideia central é reformular o ataque como uma otimização <em>irrestrita</em> via regularização Lagrangiana, resolvível por otimizadores padrão (Adam):</p>
+
+  <div class="mb">
+    minimizar<sub>x</sub> ‖x − x₀‖₂² + λ · max{ max<sub>j≠t</sub> g<sub>j</sub>(x) − g<sub>t</sub>(x), 0 }
+  </div>
+
+  <div class="co co-a">
+    <strong>O "truque do max":</strong> A função max(·, 0) codifica perfeitamente a restrição do ataque. Enquanto g<sub>t</sub> não vence, o penalizador é positivo e o otimizador continua empurrando. No momento em que g<sub>t</sub> vence, o penalizador zera e o otimizador foca exclusivamente em minimizar ‖x − x₀‖₂² — buscando a versão mais imperceptível possível do ataque já bem-sucedido.
+  </div>
+
+  <h3>Algoritmo de Gradient Descent para C&W</h3>
+  <pre>
+# Algoritmo C&W simplificado
+lambda = busca_binaria_para_lambda()
+
+for k in range(K):
+    i_star = argmax_{j≠t} g_j(x_k)          # classe mais provável que não t
+    
+    perda = ||x_k - x0||^2 + lambda * max(g_{i*}(x_k) - g_t(x_k), 0)
+    
+    x_{k+1} = x_k - alpha * grad_x(perda)   # passo de gradiente descendente
+  </pre>
+
+  <p>A busca binária para λ é fundamental: λ muito pequeno → ataque não converge (perda de distância domina); λ muito grande → ataque converge rápido mas com perturbação desnecessariamente grande.</p>
+
+  <h3 id="cw-sim">Simulação: tradeoff do parâmetro λ</h3>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-a">Interativo</span><span class="ct">C&W — tradeoff λ entre distância e confiança do ataque</span></div>
+    <div class="sr">
+      <span class="sl">λ (regularização) =</span>
+      <input type="range" min="1" max="100" value="20" step="1" id="cw-lambda" data-input="updateCW">
+      <span class="sv" id="cw-lambda-v">0.20</span>
+    </div>
+    <canvas id="cw-cv" width="540" height="300" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l)"></canvas>
+    <div class="mg c4">
+      <div class="m"><div class="mv" id="cw-dist">—</div><div class="ml">‖r‖₂ (distância)</div></div>
+      <div class="m"><div class="mv" id="cw-conf">—</div><div class="ml">Confiança na classe t</div></div>
+      <div class="m"><div class="mv" id="cw-iters">—</div><div class="ml">Iterações até convergir</div></div>
+      <div class="m"><div class="mv" id="cw-status">—</div><div class="ml">Ataque bem-sucedido?</div></div>
+    </div>
+    <p class="hn">λ baixo: distância mínima mas ataque pode não convergir. λ alto: ataque converge mas perturbação é maior. A busca binária encontra o λ ótimo.</p>
+  </div>
+
+  <h3>O que observar na simulação do C&W</h3>
+  <ol class="st st-a">
+    <li><strong>λ muito pequeno (0.01–0.05)</strong> A distância é mínima (curva azul baixa), mas o ataque falha ou requer muitas iterações para convergir. O otimizador está tão focado em minimizar ‖r‖ que não empurra suficientemente para fora da classe original.</li>
+    <li><strong>λ na faixa ótima (0.10–0.30)</strong> Ponto de equilíbrio: a perturbação é pequena O suficiente para ser imperceptível e o ataque converge em poucos passos. A busca binária do C&W original encontra automaticamente esse ponto ótimo por bisseção.</li>
+    <li><strong>λ muito grande (0.5+)</strong> O ataque converge rapidamente e com alta confiança, mas a perturbação é visivelmente maior. A "força" está toda no termo de misclassificação — o otimizador ignora a distância.</li>
+    <li><strong>Compare com PGD no mesmo "orçamento"</strong> Com o λ ótimo, o C&W produz perturbações L₂ significativamente menores que o PGD (que usa L∞). Isso ocorre porque o C&W otimiza diretamente a distância L₂, enquanto o PGD usa L∞ como proxy. Para métricas de imperceptibilidade humana, C&W tende a ser mais eficaz.</li>
+  </ol>
+
+  <h3>Quando o C&W ainda é útil</h3>
+  <ol class="st st-a">
+    <li><strong>Quebrar defesas baseadas em gradient masking</strong> O C&W foi projetado especificamente para contornar defesas que tentam ofuscar gradientes. Ao otimizar diretamente os logits (sem a softmax), o C&W evita regiões de gradiente saturado que enganam o FGSM.</li>
+    <li><strong>Avaliação de robustez L₂ mais precisa</strong> Quando a métrica de qualidade é L₂ (correlaciona melhor com percepção humana do que L∞), o C&W é o método de referência. Produz as perturbações L₂ menores que qualquer outro método prático.</li>
+    <li><strong>Ataques em casos onde invisibilidade é crítica</strong> Sistemas de reconhecimento facial, verificação biométrica, documentos digitais — onde o ataque precisa passar por inspeção humana. A otimização direta da norma L₂ pelo C&W minimiza artefatos visíveis.</li>
+    <li><strong>Pesquisa de robustez certificada</strong> Papers que reportam certified robustness usam C&W como "oráculo de ataque" superior para validar os limites de robustez. Se uma técnica não sobrevive ao C&W, as certificações são suspeitas.</li>
+  </ol>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 8. UAP / UAN                                                 -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="uap">
+  <span class="sn sn-t">8</span>
+  <h2>UAP e UAN — Perturbações Adversariais Universais</h2>
+
+  <p>Todos os ataques anteriores são <em>data-dependent</em>: calculados individualmente para cada entrada. A pergunta de Moosavi-Dezfooli et al. (2017) foi revolucionária: <strong>existe uma única perturbação capaz de enganar o classificador para a maioria das entradas?</strong></p>
+
+  <div class="co co-t">
+    <strong>Definição formal:</strong> Dado um distribuição de imagens μ e um classificador k(x), queremos encontrar um único vetor v ∈ ℝ<sup>d</sup> tal que:<br>
+    (1) ‖v‖<sub>p</sub> ≤ ξ — imperceptível (budget de norma ξ)<br>
+    (2) ℙ<sub>x~μ</sub>[k(x + v) ≠ k(x)] ≥ 1 − δ — alta taxa de engano (erro máximo δ)
+  </div>
+
+  <h3>Algoritmo UAP (Moosavi-Dezfooli et al., 2017)</h3>
+  <ol class="st st-t">
+    <li><strong>Inicializar v ← 0</strong> Começa com perturbação nula.</li>
+    <li><strong>Iterar sobre imagens do dataset</strong> Para cada imagem x<sub>i</sub>, verificar se v já engana k(x<sub>i</sub> + v).</li>
+    <li><strong>Se não engana, calcular Δv</strong> Usar DeepFool para encontrar a perturbação mínima Δv<sub>i</sub> tal que k(x<sub>i</sub> + v + Δv<sub>i</sub>) ≠ k(x<sub>i</sub>).</li>
+    <li><strong>Acumular e projetar</strong> v ← P<sub>p,ξ</sub>(v + Δv<sub>i</sub>) — adicionar a perturbação local e projetar na bola L<sub>p</sub> de raio ξ.</li>
+    <li><strong>Parar quando taxa de engano ≥ 1−δ</strong> O loop repete sobre o dataset até que a fraçao de imagens enganadas supere o threshold.</li>
+  </ol>
+
+  <h3>Redes Adversariais Universais (UAN — Universal Adversarial Networks)</h3>
+  <p>Hayes et al. (2018) propuseram uma abordagem generativa: em vez de iterar sobre dados para encontrar um único v, <em>treinar uma rede geradora</em> que produz perturbações universais instantaneamente:</p>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:1rem 0">
+    <div class="co co-t" style="margin:0">
+      <strong>UAP (iterativo)</strong><br>
+      + Simples e interpretável<br>
+      + Garante uma perturbação<br>
+      − Computacionalmente caro (DeepFool por imagem)<br>
+      − Apenas um vetor fixo
+    </div>
+    <div class="co co-b" style="margin:0">
+      <strong>UAN (generativo)</strong><br>
+      + Gera perturbações diversas instantaneamente (muda z)<br>
+      + Potencialmente transfere melhor entre arquiteturas<br>
+      − Requer treinamento de GAN (complexo)<br>
+      − Menos interpretável
+    </div>
+  </div>
+
+  <p>A loss do UAN não-direcionado balanceia dois objetivos opostos:</p>
+  <div class="mb" style="font-size:0.88rem">
+    L<sub>nt</sub> = max{ log[f(δ' + x)]<sub>c₀</sub> − max<sub>i≠c₀</sub> log[f(δ' + x)]<sub>i</sub>, −κ } + α·‖δ'‖<sub>p</sub>
+  </div>
+
+  <h3 id="uap-sim">Visualização: fooling rates por arquitetura</h3>
+
+  <div class="ic">
+    <div class="ch"><span class="cb cb-t">Dados</span><span class="ct">UAP — taxas de engano no ILSVRC 2012 (Moosavi-Dezfooli et al.)</span></div>
+    <div class="br">
+      <button class="bt on" data-click="setUAPNorm" data-arg="l2" id="uap-l2">Norma L₂</button>
+      <button class="bt" data-click="setUAPNorm" data-arg="linf" id="uap-linf">Norma L∞</button>
+    </div>
+    <canvas id="uap-cv" width="540" height="260" style="width:100%;border-radius:var(--r);border:1px solid var(--border-l)"></canvas>
+    <p class="hn">Barras sólidas = taxa no conjunto X de treino da UAP. Barras tracejadas = taxa no conjunto de validação. L∞ com ξ=10.</p>
+    <div class="mg c3">
+      <div class="m"><div class="mv" id="uap-mean">—</div><div class="ml">Média de engano</div></div>
+      <div class="m"><div class="mv" id="uap-max">—</div><div class="ml">Máximo (melhor arq.)</div></div>
+      <div class="m"><div class="mv" id="uap-transfer">Alta</div><div class="ml">Transferibilidade</div></div>
+    </div>
+  </div>
+
+  <h3>O que observar na visualização das UAPs</h3>
+  <ol class="st st-t">
+    <li><strong>Taxas de engano surpreendentemente altas para um único vetor</strong> Com L∞ e ξ=10, CaffeNet atinge 93.3% de engano no conjunto de validação. Uma única imagem de ruído, invisível a olho nu, quebra o classificador em ~9 de cada 10 imagens reais. Isso seria impossível se as fronteiras de decisão fossem geometricamente diversas.</li>
+    <li><strong>Compare L₂ vs L∞</strong> Para arquiteturas como VGG, L∞ tende a ser mais eficiente (menores perturbações para altas taxas de engano). Para ResNet e GoogLeNet, L₂ pode ser comparável. A escolha da norma muda qual arquitetura é mais vulnerável.</li>
+    <li><strong>Transferibilidade entre arquiteturas</strong> Uma UAP treinada para CaffeNet mantém alta taxa de engano em VGG-F, VGG-16 e outras. Isso sugere que diferentes arquiteturas compartilham "pontos cegos" geométricos similares — vulnerabilidades comuns ao dataset ImageNet, não a arquiteturas específicas.</li>
+    <li><strong>Implicações práticas radicais</strong> Se um atacante consegue a UAP para uma arquitetura conhecida (ou similar), ele tem um "esqueleto mestre" que abre a maioria dos classificadores com esse tipo de entrada. Uma única imagem de perturbação capturada fisicamente em uma câmera pode sistematicamente enganar todos os sistemas que processam esse tipo de cena.</li>
+  </ol>
+
+  <h3>Quando UAPs / UANs ainda são relevantes</h3>
+  <ol class="st st-t">
+    <li><strong>Ataques no mundo físico</strong> Uma UAP pode ser impressa em uma placa, estampada em roupas adversariais ou projetada sobre objetos. Não é específica de imagem — qualquer foto tirada através dela é enganada. Isso a torna prática para cenários físicos onde é impossível computar perturbações por imagem em tempo real.</li>
+    <li><strong>Revelar vulnerabilidades sistêmicas</strong> A existência de UAPs prova que as vulnerabilidades não são randômicas — há correlações geométricas profundas nas fronteiras das DNNs. Pesquisadores usam UAPs para entender onde essas correlações estão e projetar arquiteturas mais diversas.</li>
+    <li><strong>Ataques de baixo custo pós-treinamento</strong> Depois de calcular a UAP uma vez (custo alto), aplicá-la tem custo praticamente zero. Sistemas que processam streams de vídeo ao vivo são vulneráveis a UAPs pré-calculadas offline — uma ameaça realista para câmeras de segurança e sensores automotivos.</li>
+    <li><strong>UANs para geração de dados de treino adversarial</strong> GANs treinadas para gerar UAPs podem produzir perturbações diversas para treino adversarial em larga escala — sem precisar rodar DeepFool por imagem. Uma UAN treinada gera novos exemplos adversariais em microssegundos.</li>
+  </ol>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- COMPARAÇÃO                                                   -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="compare">
+  <span class="sn sn-b">9</span>
+  <h2>Comparação Geral — Cheat Sheet</h2>
+
+  <table class="tb">
+    <thead><tr><th>Ataque</th><th>Formulação</th><th>Norma</th><th>Mecanismo</th><th>Força</th><th>Custo</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>FGSM</strong><br><span style="font-size:10px;color:var(--text3)">Goodfellow 2014</span></td>
+        <td>Max-Allowable</td>
+        <td>L∞</td>
+        <td>1 passo no sinal do gradiente</td>
+        <td><span class="tag tag-w">Fraco</span></td>
+        <td>1× backprop</td>
+      </tr>
+      <tr>
+        <td><strong>I-FGSM / BIM</strong><br><span style="font-size:10px;color:var(--text3)">Kurakin 2017</span></td>
+        <td>Max-Allowable</td>
+        <td>L∞</td>
+        <td>K passos iterativos com clipping</td>
+        <td><span class="tag tag-w">Médio</span></td>
+        <td>K× backprop</td>
+      </tr>
+      <tr>
+        <td><strong>PGD</strong><br><span style="font-size:10px;color:var(--text3)">Madry 2018</span></td>
+        <td>Max-Allowable</td>
+        <td>L∞</td>
+        <td>I-FGSM + inicialização aleatória</td>
+        <td><span class="tag tag-f">Forte</span></td>
+        <td>K×R× backprop</td>
+      </tr>
+      <tr>
+        <td><strong>DeepFool</strong><br><span style="font-size:10px;color:var(--text3)">Moosavi 2016</span></td>
+        <td>Min-Norm</td>
+        <td>L₂</td>
+        <td>Projeção iterativa por linearização</td>
+        <td><span class="tag tag-b">Preciso</span></td>
+        <td>~50× backprop</td>
+      </tr>
+      <tr>
+        <td><strong>Carlini-Wagner</strong><br><span style="font-size:10px;color:var(--text3)">Carlini 2017</span></td>
+        <td>Regularização</td>
+        <td>L₀/L₂/L∞</td>
+        <td>GD irrestrito (Adam) + busca binária em λ</td>
+        <td><span class="tag tag-f">Muito forte</span></td>
+        <td>Centenas× backprop</td>
+      </tr>
+      <tr>
+        <td><strong>UAP</strong><br><span style="font-size:10px;color:var(--text3)">Moosavi 2017</span></td>
+        <td>Min-Norm (dataset)</td>
+        <td>L₂/L∞</td>
+        <td>DeepFool agregado sobre o dataset</td>
+        <td><span class="tag tag-f">Alto impacto</span></td>
+        <td>Alto (offline)</td>
+      </tr>
+      <tr>
+        <td><strong>UAN</strong><br><span style="font-size:10px;color:var(--text3)">Hayes 2018</span></td>
+        <td>Regularização (GAN)</td>
+        <td>L₂/L∞</td>
+        <td>Generator treinado por adversarial loss</td>
+        <td><span class="tag tag-f">Alto impacto</span></td>
+        <td>Muito alto (treino) / zero (inferência)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Perguntas de revisão (Q&A do prof. Jurie)</h3>
+
+  <ol class="st st-b">
+    <li><strong>Como o FGSM explora a linearidade de modelos de deep learning?</strong> O FGSM usa uma aproximação de Taylor de primeira ordem da loss — essencialmente assume que a loss é localmente linear em torno de x₀. Para modelos de grande capacidade, a linearidade local em regiões de alta dimensão é surpreendentemente boa, porque o gradiente aponta consistentemente na direção que aumenta a loss. A eficácia do FGSM é, na verdade, evidência de que as DNNs são excessivamente lineares em seus espaços de features internos.</li>
+    <li><strong>Por que é importante projetar a perturbação de volta no PGD, e o que acontece sem isso?</strong> Sem a projeção Clip, a perturbação acumulada pode ultrapassar o budget ε, tornando o exemplo adversarial detectável ou inválido (pixel &lt; 0 ou &gt; 1). Mais sutilmente: sem projeção, o método perde a garantia de estar no worst-case ε-ball. A robustez adversarial é definida dentro de uma bola específica — um ataque fora da bola não testa robustez, testa resistência a perturbações maiores.</li>
+    <li><strong>Se um modelo é robusto ao FGSM, é automaticamente robusto ao PGD?</strong> Não — e essa confusão levou a décadas de "falsas defesas". Modelos treinados com FGSM frequentemente exibem "catastrophic overfitting": aprendem a ter gradientes pequenos especificamente na direção do FGSM, sem robustez real. O PGD, com inicialização aleatória, encontra perturbações fortes que o FGSM nunca alcança. Robustez ao FGSM sem robustez ao PGD é um sinal de gradient masking.</li>
+    <li><strong>Como a escolha de norma (L₀, L₂, L∞) afeta a perceptibilidade?</strong> L∞ distribui a perturbação por todos os pixels — imperceptível globalmente mas eventualmente visível como textura. L₂ concentra energia nas regiões de maior impacto — pode criar artefatos localizados mas com perturbação total menor. L₀ é esparso — poucos pixels muito modificados, possivelmente visível mas localmente concentrado. Na prática, L₂ e L∞ correlacionam melhor com imperceptibilidade perceptual para os valores de ε típicos (8/255).</li>
+  </ol>
+
+  <div class="co co-pk">
+    <strong>A corrida armamentista (arms race) — lição central:</strong> Cada ataque neste capítulo foi criado em resposta a uma defesa que parecia funcionar. FGSM → Defensive Distillation (quebrada pelo C&W). PGD → Gradient masking (quebrado por BPDA). C&W → Detecção por Feature Squeezing (quebrada por ataques adaptativos). O padrão se repete: a única forma de avaliar uma defesa honestamente é testá-la contra ataques adaptativos que conhecem e se adaptam à defesa. Qualquer outra coisa é otimismo.
+  </div>
+</section>
+
+<footer class="ft">
+  <p>Baseado nos slides de Frédéric Jurie — Security of AI, Chap 4: White-Box Evasion Attacks — ENSICAEN (Mars 2026)</p>
+  <p>Referências principais: Goodfellow et al. 2014 · Madry et al. 2018 · Moosavi-Dezfooli et al. 2016/2017 · Carlini & Wagner 2017 · Hayes et al. 2018</p>
+</footer>
+
+</div><!-- /.page -->
