@@ -17,7 +17,7 @@ describe('banco de questões', () => {
   });
 
   it('cada filtro do menu tem questões', () => {
-    for (const { key } of MENU) expect(byChapter(QUESTIONS, key).length).toBeGreaterThan(0);
+    for (const key of MENU) expect(byChapter(QUESTIONS, key).length).toBeGreaterThan(0);
   });
 });
 

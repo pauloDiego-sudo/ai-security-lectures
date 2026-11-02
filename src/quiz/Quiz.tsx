@@ -1,19 +1,22 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useDocumentTitle, useStyleSheet } from '../hooks/usePageSetup';
-import { CH_COLORS, MENU } from './chapters';
+import baseCss from '../pages/home.css?inline';
+import { CHAPTER_NAMES, MENU, chapterLabel } from './chapters';
 import { byChapter, gradeFor, shuffle, validQuestions } from './engine';
 import { QUESTIONS } from './questions';
-import { S } from './styles';
+import css from './quiz.css?inline';
 import type { Answer, ChapterFilter, Question } from './types';
 
 type Mode = 'menu' | 'quiz' | 'review';
 
-const PAGE_CSS = 'body{margin:0;background:#0b0f19}';
+const plural = (n: number) => `${n} question${n > 1 ? 's' : ''}`;
+const pad = (n: number) => String(n).padStart(2, '0');
 
 export function Quiz() {
-  useStyleSheet(PAGE_CSS);
-  useDocumentTitle("QCM d'entraînement — Sécurité des IA");
+  useStyleSheet(baseCss);
+  useStyleSheet(css);
+  useDocumentTitle("QCM d'entraînement — Segurança em IA");
 
   const bank = useMemo(() => validQuestions(QUESTIONS), []);
   const [mode, setMode] = useState<Mode>('menu');
@@ -34,6 +37,7 @@ export function Quiz() {
     setConfirmed(false);
     setAnswers([]);
     setMode('quiz');
+    window.scrollTo(0, 0);
   };
 
   const confirm = () => {
@@ -44,6 +48,7 @@ export function Quiz() {
   };
 
   const next = () => {
+    window.scrollTo(0, 0);
     if (current + 1 >= questions.length) {
       setMode('review');
       return;
@@ -58,101 +63,106 @@ export function Quiz() {
   const pct = total > 0 ? Math.round((score / total) * 100) : 0;
 
   if (mode === 'menu') {
+    const chapters = MENU.filter((key) => key !== 'all');
     return (
-      <div style={S.root} lang="fr">
-        <div style={S.menuContainer}>
-          <Link to="/" style={{ ...S.btnGhost, display: 'inline-block', padding: '4px 0', textDecoration: 'none' }}>
-            ← Índice
-          </Link>
-          <div style={S.menuHeader}>
-            <div style={S.menuIcon}>🔐</div>
-            <h1 style={S.menuTitle}>Sécurité des IA</h1>
-            <p style={S.menuSub}>QCM d'entraînement — {bank.length} questions</p>
-            <p style={S.menuProf}>Prof. Frédéric Jurie — ENSICAEN 2026</p>
+      <div className="page" lang="fr">
+        <Link to="/" className="back">
+          ← Índice
+        </Link>
+        <header className="masthead">
+          <p className="eyebrow">Segurança em IA</p>
+          <h1>QCM d'entraînement</h1>
+          <p className="subtitle">
+            {plural(bank.length)} à choix multiple, avec explication après chaque réponse.
+          </p>
+        </header>
+
+        <button type="button" className="quiz" onClick={() => startQuiz('all')}>
+          <span>
+            <span className="quiz-title">Toutes les questions</span>
+            <span className="quiz-meta">{plural(bank.length)}, dans un ordre aléatoire</span>
+          </span>
+          <span className="quiz-cta">Commencer</span>
+        </button>
+
+        <section>
+          <div className="section-head">
+            <h2>Par chapitre</h2>
           </div>
-          <div style={S.chGrid}>
-            {MENU.map((ch) => {
-              const count = byChapter(bank, ch.key).length;
-              const colors = ch.key === 'all' ? CH_COLORS[0] : CH_COLORS[ch.key];
+          <ol className="modules">
+            {chapters.map((ch) => {
+              const count = byChapter(bank, ch).length;
               return (
-                <button
-                  key={ch.key}
-                  type="button"
-                  onClick={() => startQuiz(ch.key)}
-                  disabled={count === 0}
-                  style={{
-                    ...S.chCard,
-                    background: `linear-gradient(135deg, ${colors.bg}, ${colors.light})`,
-                    borderLeft: `3px solid ${colors.accent}`,
-                  }}
-                  onMouseOver={(e) => (e.currentTarget.style.transform = 'translateY(-2px) scale(1.02)')}
-                  onMouseOut={(e) => (e.currentTarget.style.transform = 'none')}
-                >
-                  <span style={S.chEmoji}>{ch.emoji}</span>
-                  <div>
-                    <div style={{ ...S.chLabel, color: colors.accent }}>{ch.label}</div>
-                    <div style={S.chCount}>
-                      {count} question{count > 1 ? 's' : ''}
-                    </div>
-                  </div>
-                </button>
+                <li key={ch}>
+                  <button
+                    type="button"
+                    className={count === 0 ? 'row disabled' : 'row'}
+                    onClick={() => startQuiz(ch)}
+                    disabled={count === 0}
+                  >
+                    <span className="row-number">{ch === 0 ? '—' : pad(ch)}</span>
+                    <span className="row-title">{CHAPTER_NAMES[ch]}</span>
+                    <span className="row-status">{plural(count)}</span>
+                  </button>
+                </li>
               );
             })}
-          </div>
-        </div>
+          </ol>
+        </section>
       </div>
     );
   }
 
   if (mode === 'review') {
     const wrong = answers.filter((a) => !a.correct);
-    const { grade, msg } = gradeFor(pct);
+    const { msg } = gradeFor(pct);
 
     return (
-      <div style={S.root} lang="fr">
-        <div style={S.reviewContainer}>
-          <div style={S.scoreCard}>
-            <div style={S.scoreGrade}>{grade}</div>
-            <div style={S.scoreNum}>
-              {score}/{total}
-            </div>
-            <div style={S.scorePct}>{pct}%</div>
-            <div style={S.scoreMsg}>{msg}</div>
-            <div style={S.scoreBar}>
-              <div style={{ ...S.scoreBarFill, width: `${pct}%`, background: pct >= 60 ? '#34d399' : '#f87171' }} />
-            </div>
+      <div className="page" lang="fr">
+        <header className="masthead">
+          <p className="eyebrow">Résultat</p>
+          <h1>
+            {score} <span className="score-total">/ {total}</span>
+          </h1>
+          <p className="subtitle">
+            {pct} % — {msg}
+          </p>
+          <div className="meter" aria-hidden="true">
+            <div className="meter-fill" style={{ width: `${pct}%` }} />
           </div>
+        </header>
 
-          {wrong.length > 0 && (
-            <div style={S.wrongSection}>
-              <h3 style={S.wrongTitle}>Questions ratées ({wrong.length})</h3>
-              {wrong.map(({ question: q, selected: sel }) => {
-                const colors = CH_COLORS[q.ch];
-                return (
-                  <div key={q.q} style={{ ...S.wrongCard, borderLeft: `3px solid ${colors.accent}` }}>
-                    <div style={{ ...S.wrongChip, background: colors.bg, color: colors.accent }}>{colors.name}</div>
-                    <p style={S.wrongQ}>{q.q}</p>
-                    <div style={S.wrongAns}>
-                      <span style={{ color: '#f87171' }}>✗ Ta réponse : {q.opts[sel]}</span>
-                    </div>
-                    <div style={S.wrongAns}>
-                      <span style={{ color: '#34d399' }}>✓ Bonne réponse : {q.opts[q.ans]}</span>
-                    </div>
-                    <p style={S.wrongExpl}>{q.expl}</p>
-                  </div>
-                );
-              })}
+        {wrong.length > 0 && (
+          <section>
+            <div className="section-head">
+              <h2>Questions ratées</h2>
+              <span className="section-meta">{wrong.length}</span>
             </div>
-          )}
+            <ol className="missed">
+              {wrong.map(({ question: q, selected: sel }) => (
+                <li key={q.q}>
+                  <p className="tag">{chapterLabel(q.ch)}</p>
+                  <p className="missed-q">{q.q}</p>
+                  <p className="answer is-wrong">
+                    <span className="answer-mark">✗</span> {q.opts[sel]}
+                  </p>
+                  <p className="answer is-correct">
+                    <span className="answer-mark">✓</span> {q.opts[q.ans]}
+                  </p>
+                  <p className="missed-expl">{q.expl}</p>
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
 
-          <div style={S.btnRow}>
-            <button type="button" onClick={() => startQuiz(filter)} style={S.btnPrimary}>
-              🔄 Recommencer
-            </button>
-            <button type="button" onClick={() => setMode('menu')} style={S.btnSecondary}>
-              📋 Menu
-            </button>
-          </div>
+        <div className="actions">
+          <button type="button" className="btn btn-primary" onClick={() => startQuiz(filter)}>
+            Recommencer
+          </button>
+          <button type="button" className="btn btn-secondary" onClick={() => setMode('menu')}>
+            Menu
+          </button>
         </div>
       </div>
     );
@@ -160,99 +170,71 @@ export function Quiz() {
 
   // QUIZ MODE
   const q = questions[current];
-  const colors = CH_COLORS[q.ch];
+  const optionClass = (i: number) => {
+    if (!confirmed) return i === selected ? 'option is-selected' : 'option';
+    if (i === q.ans) return 'option is-correct';
+    if (i === selected) return 'option is-wrong';
+    return 'option is-dim';
+  };
 
   return (
-    <div style={S.root} lang="fr">
-      <div style={S.quizContainer}>
-        <div style={S.progressRow}>
-          <span style={S.progressText}>
-            {current + 1}/{questions.length}
-          </span>
-          <div style={S.progressBar}>
-            <div style={{ ...S.progressFill, width: `${((current + 1) / questions.length) * 100}%` }} />
-          </div>
-          <span style={S.scoreSmall}>
-            {score}✓ {total - score}✗
-          </span>
+    <div className="page" lang="fr">
+      <div className="topbar">
+        <button type="button" className="back" onClick={() => setMode('menu')}>
+          ← Quitter
+        </button>
+        <span className="section-meta">
+          {score} ✓ · {total - score} ✗
+        </span>
+      </div>
+
+      <div className="progress">
+        <span className="section-meta">
+          {pad(current + 1)} / {pad(questions.length)}
+        </span>
+        <div className="meter" aria-hidden="true">
+          <div className="meter-fill" style={{ width: `${((current + 1) / questions.length) * 100}%` }} />
         </div>
+      </div>
 
-        <div style={{ ...S.qCard, borderTop: `3px solid ${colors.accent}` }}>
-          <div style={{ ...S.qChip, background: colors.bg, color: colors.accent }}>{colors.name}</div>
-          <p style={S.qText}>{q.q}</p>
-        </div>
+      <p className="tag">{chapterLabel(q.ch)}</p>
+      <h1 className="question">{q.q}</h1>
 
-        <div style={S.optsGrid}>
-          {q.opts.map((opt, i) => {
-            let bg = '#1e293b';
-            let border = '#334155';
-            let textColor = '#e2e8f0';
-            if (confirmed) {
-              if (i === q.ans) {
-                bg = '#064e3b';
-                border = '#34d399';
-                textColor = '#34d399';
-              } else if (i === selected) {
-                bg = '#450a0a';
-                border = '#f87171';
-                textColor = '#f87171';
-              }
-            } else if (i === selected) {
-              bg = '#1e3a5f';
-              border = colors.accent;
-              textColor = '#fff';
-            }
-            return (
-              <button
-                key={opt}
-                type="button"
-                onClick={() => !confirmed && setSelected(i)}
-                disabled={confirmed}
-                aria-pressed={i === selected}
-                style={{
-                  ...S.optBtn,
-                  background: bg,
-                  borderColor: border,
-                  color: textColor,
-                  cursor: confirmed ? 'default' : 'pointer',
-                  opacity: confirmed && i !== q.ans && i !== selected ? 0.4 : 1,
-                }}
-              >
-                <span style={{ ...S.optLetter, borderColor: border, color: textColor }}>{String.fromCharCode(65 + i)}</span>
-                <span style={S.optText}>{opt}</span>
-                {confirmed && i === q.ans && <span style={S.optIcon}>✓</span>}
-                {confirmed && i === selected && i !== q.ans && <span style={S.optIcon}>✗</span>}
-              </button>
-            );
-          })}
-        </div>
-
-        {confirmed && (
-          <div style={S.explCard}>
-            <div style={S.explTitle}>💡 Explication</div>
-            <p style={S.explText}>{q.expl}</p>
-          </div>
-        )}
-
-        <div style={S.btnRow}>
-          {!confirmed ? (
-            <button
-              type="button"
-              onClick={confirm}
-              disabled={selected === null}
-              style={{ ...S.btnPrimary, opacity: selected === null ? 0.4 : 1 }}
-            >
-              Confirmer
-            </button>
-          ) : (
-            <button type="button" onClick={next} style={S.btnPrimary}>
-              {current + 1 >= questions.length ? 'Voir résultats →' : 'Suivant →'}
-            </button>
-          )}
-          <button type="button" onClick={() => setMode('menu')} style={S.btnGhost}>
-            Quitter
+      <div className="options">
+        {q.opts.map((opt, i) => (
+          <button
+            key={opt}
+            type="button"
+            className={optionClass(i)}
+            onClick={() => !confirmed && setSelected(i)}
+            disabled={confirmed}
+            aria-pressed={i === selected}
+          >
+            <span className="option-letter">{String.fromCharCode(65 + i)}</span>
+            <span className="option-text">{opt}</span>
+            {confirmed && i === q.ans && <span className="option-mark">✓</span>}
+            {confirmed && i === selected && i !== q.ans && <span className="option-mark">✗</span>}
           </button>
-        </div>
+        ))}
+      </div>
+
+      {confirmed && (
+        <aside className="explanation">
+          <h2>Explication</h2>
+          <p>{q.expl}</p>
+        </aside>
+      )}
+
+      <div className="actions">
+        {!confirmed ? (
+          <button type="button" className="btn btn-primary" onClick={confirm} disabled={selected === null}>
+            Confirmer
+          </button>
+        ) : (
+          <button type="button" className="btn btn-primary" onClick={next}>
+            {current + 1 >= questions.length ? 'Voir les résultats →' : 'Suivant →'}
+          </button>
+        )}
       </div>
     </div>
   );
